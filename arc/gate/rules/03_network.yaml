@@ -1,0 +1,120 @@
+# NET-* : network and payment rules.
+#
+# These scope by action rather than by channel, because "presents a debit" is
+# narrower than "is silent": a card-updater refresh is silent but does not
+# attempt a charge, so a retry cap must not apply to it.
+
+- id: NET-CAT1
+  class: INVARIANT
+  scope: [silent]
+  actions: [retry, rail_fallback]
+  basis: network_rule
+  status: in_force
+  in_force_from: null
+  check: hard_decline_category
+  params: {}
+  on_violation: BLOCK_PERMANENT
+  informed_by:
+    - instrument: "Card network merchant retry rules - category 1 declines"
+      force: in_force
+  rationale: >
+    Lost, stolen, closed and stop-payment declines are terminal for the
+    instrument. Retrying is network-punished and cannot succeed. The recovery
+    path is a credential update, not another presentment.
+
+- id: NET-MAC03
+  class: INVARIANT
+  scope: [silent]
+  actions: [retry, rail_fallback]
+  basis: network_rule
+  status: in_force
+  in_force_from: null
+  check: do_not_retry_advice
+  params: {}
+  on_violation: BLOCK_PERMANENT
+  informed_by:
+    - instrument: "NACH / card network do-not-retry advice codes"
+      force: in_force
+  rationale: >
+    An explicit do-not-retry advice code is an instruction, not a soft failure.
+    Ignoring it is the fastest route to losing merchant standing.
+
+- id: NET-RETRY-30D
+  class: RESERVED
+  scope: [silent]
+  actions: [retry, rail_fallback]
+  basis: network_rule
+  status: contested
+  in_force_from: null
+  check: attempt_budget
+  params:
+    window_days: 30
+    max_attempts: 15
+  on_violation: BLOCK
+  informed_by:
+    - instrument: "Card network merchant attempt caps, 30-day window"
+      force: contested
+      note: >
+        Published merchant guidance disagrees on the exact cap across networks
+        and geographies. We hold an internal ceiling below the highest published
+        figure and label the rule contested rather than asserting a number.
+  rationale: >
+    Being conservative on a contested rule, and saying so, is the defensible
+    posture. Gateway-initiated retries count against this budget too, because
+    otherwise the counter is wrong in the direction that breaches the cap.
+
+- id: NET-RETRY-DAY
+  class: TEMPORAL
+  scope: [silent]
+  actions: [retry, rail_fallback]
+  basis: network_rule
+  status: in_force
+  in_force_from: null
+  check: attempts_per_day
+  params:
+    max_per_day: 1
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Card network merchant retry rules - daily presentment limit"
+      force: in_force
+  rationale: >
+    At most one presentment per instrument per day. The next-eligible time is
+    computable, so this defers rather than blocking.
+
+- id: NET-MANDATE-CAP
+  class: INVARIANT
+  scope: [silent]
+  actions: [retry, rail_fallback]
+  basis: statutory
+  status: in_force
+  in_force_from: null
+  check: amount_within_mandate_cap
+  params: {}
+  on_violation: BLOCK
+  informed_by:
+    - instrument: "RBI e-mandate framework for recurring transactions"
+      force: in_force
+  rationale: >
+    A debit above the registered cap is unauthorised. An unknown cap blocks,
+    because presenting on an unverified authorisation is the same risk as
+    presenting on none.
+
+- id: NET-PREDEBIT
+  class: TEMPORAL
+  scope: [silent]
+  actions: [retry, rail_fallback]
+  basis: statutory
+  status: in_force
+  in_force_from: null
+  check: predebit_notice_lead
+  params:
+    hours: 24
+  on_violation: DEFER
+  informed_by:
+    - instrument: "RBI e-mandate framework - pre-debit notification"
+      force: in_force
+      note: "Not less than 24 hours before the debit is presented."
+  rationale: >
+    The notification window is also the prevention window: it is where a
+    predicted bounce is converted into a non-event. If no notice was sent there
+    is no computable eligible time, so the remedy becomes a BLOCK.

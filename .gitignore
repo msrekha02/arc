@@ -1,0 +1,17 @@
+# python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# env / local
+.env
+.env.local
+
+# node (console, milestone M14)
+node_modules/
+
+# artefacts
+*.log

@@ -1,0 +1,78 @@
+# TIME-* : time of day, calendar, and certificate validity.
+
+- id: TIME-WINDOW
+  class: TEMPORAL
+  scope: [voice, whatsapp, sms, email, payment_link, instalment, human]
+  basis: statutory
+  status: in_force
+  in_force_from: null
+  check: contact_window
+  params:
+    open: "08:00"
+    close: "19:00"
+  on_violation: DEFER
+  informed_by:
+    - instrument: "RBI Fair Practices Code - recovery agent contact hours"
+      force: in_force
+      note: "Contact restricted to 08:00-19:00 local time."
+  rationale: >
+    Evaluated in the subject's local time at the planned execution moment, not
+    at gating time. An unresolved timezone blocks rather than defaulting to a
+    zone, because guessing produces out-of-hours contact with a clean log.
+
+- id: TIME-QUIET
+  class: TEMPORAL
+  scope: [voice, whatsapp, sms, email, payment_link, instalment, human]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: quiet_hours
+  params: {}
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal customer-preference policy"
+      force: in_force
+  rationale: >
+    A subject-declared quiet period overrides the statutory window downward,
+    never upward. Honouring a stated preference costs one deferral.
+
+- id: TIME-DAY
+  class: TEMPORAL
+  scope: [voice]
+  basis: policy_choice
+  status: advisory
+  in_force_from: null
+  check: blocked_days
+  params:
+    weekdays: [6]
+    include_bank_holidays: true
+    open: "08:00"
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Industry guidance on rest days and gazetted holidays"
+      force: advisory
+      note: >
+        Guidance rather than direction. It sets no penalty and must not be
+        described as binding. We apply it to voice as policy.
+  rationale: >
+    A Sunday or gazetted-holiday call reads as harassment for no gain in
+    right-party contact. The holiday calendar is injected into the context, so
+    the Gate performs no lookup of its own.
+
+- id: TIME-CERT-WINDOW
+  class: RUNTIME
+  scope: [silent, voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: certificate_window
+  params:
+    half_window_minutes: 15
+  on_violation: BLOCK
+  informed_by:
+    - instrument: "Internal system invariant, not a regulatory requirement"
+      force: in_force
+  rationale: >
+    Certificates expire. An ALLOW issued at 18:58 for a voice call must not
+    execute at 19:02, so the dispatcher cancels and re-decides rather than
+    executing stale authorisation. RUNTIME class, so project() never sees it.

@@ -1,0 +1,61 @@
+# FREQ-* : aggregate contact volume per SUBJECT.
+#
+# Counted at the subject, not the claim. The subject is the unit a message
+# physically reaches, so holding three claims must not buy three times the
+# contact.
+#
+# Honesty note: all three are basis: policy_choice. Regulatory guidance treats
+# frequency causing distress as harassment without specifying a number, so
+# there is no statutory figure to cite here and we do not invent one.
+
+- id: FREQ-24H
+  class: TEMPORAL
+  scope: [voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: contact_frequency
+  params:
+    window_hours: 24
+    max_contacts: 1
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal contact-frequency policy"
+      force: in_force
+      note: "No instrument specifies a number. This is our choice."
+  rationale: "One outbound contact per subject per rolling 24 hours."
+
+- id: FREQ-7D
+  class: TEMPORAL
+  scope: [voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: contact_frequency
+  params:
+    window_hours: 168
+    max_contacts: 3
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal contact-frequency policy"
+      force: in_force
+  rationale: >
+    Three per rolling seven days. The window is half-open, so an event at
+    exactly the boundary belongs to the next window and the behaviour is
+    property-testable rather than accidental.
+
+- id: FREQ-30D
+  class: TEMPORAL
+  scope: [voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: contact_frequency
+  params:
+    window_hours: 720
+    max_contacts: 8
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal contact-frequency policy"
+      force: in_force
+  rationale: "Eight per rolling thirty days, the long-horizon ceiling."

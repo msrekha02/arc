@@ -1,0 +1,56 @@
+[project]
+name = "arc"
+version = "0.1.0"
+description = "ARC - Autonomous Revenue Continuity"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "asyncpg>=0.30",
+    "pydantic>=2.9,<3",
+    "numpy>=1.26",
+    # IANA timezone database. Windows ships no system tzdb, and slim Linux
+    # images often drop it, so zoneinfo must carry its own. Pinning the data
+    # to the lockfile also keeps subject-local time identical across machines,
+    # which replay depends on.
+    "tzdata>=2024.1",
+    # AES-GCM for the subject store. Crypto-shredding is only real if the
+    # data was really encrypted, so this is not a place for a hand-rolled
+    # construction.
+    "cryptography>=43",
+    # The rule registry is authored as YAML so a compliance reviewer can read
+    # it without reading Python.
+    "pyyaml>=6",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["arc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--strict-markers --strict-config"
+filterwarnings = ["error"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["arc", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "ASYNC"]
+
+[tool.ruff.format]
+quote-style = "double"

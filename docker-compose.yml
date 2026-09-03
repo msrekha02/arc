@@ -1,0 +1,34 @@
+name: arc
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: arc-postgres
+    environment:
+      POSTGRES_USER: arc
+      POSTGRES_PASSWORD: arc
+      POSTGRES_DB: arc
+      # Deterministic ordering and timestamps. WHY: replay must be
+      # byte-identical, and collation affects ORDER BY on text columns.
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+      TZ: UTC
+      PGTZ: UTC
+    command:
+      - postgres
+      - -c
+      - timezone=UTC
+      - -c
+      - max_connections=200          # 20-worker load test (M9) plus headroom
+    ports:
+      - "5432:5432"
+    volumes:
+      - arc-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arc -d arc"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+volumes:
+  arc-pgdata:

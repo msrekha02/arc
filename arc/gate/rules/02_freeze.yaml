@@ -1,0 +1,134 @@
+# FRZ-* : state-based freezes.
+#
+# A freeze that ends at a knowable time is TEMPORAL and DEFERs to that time.
+# One that ends when a human closes something is INVARIANT and BLOCKs, because
+# there is no timestamp to sleep until and pretending otherwise would produce a
+# DEFER that never wakes.
+
+- id: FRZ-PTP
+  class: TEMPORAL
+  scope: [voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: freeze_until
+  params:
+    flag: ptp_active
+    until_field: ptp_freeze_until
+    extra_hours: 24
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal collections policy"
+      force: in_force
+  rationale: >
+    A customer who has promised a date has already been asked. Chasing before
+    that date plus grace converts a cooperative subject into a complaint.
+
+- id: FRZ-DISPUTE
+  class: INVARIANT
+  scope: [silent, voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: subject_flag
+  params:
+    flag: disputed
+  on_violation: BLOCK
+  informed_by:
+    - instrument: "RBI Fair Practices Code - grievance redressal"
+      force: in_force
+  rationale: >
+    A disputed debt is routed to resolution and never escalated. There is no
+    computable end date, so this blocks rather than deferring.
+
+- id: FRZ-HARDSHIP
+  class: INVARIANT
+  scope: [silent, voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: subject_flag
+  params:
+    flag: hardship
+  on_violation: BLOCK_PERMANENT
+  informed_by:
+    - instrument: "Internal vulnerable-customer policy"
+      force: in_force
+  rationale: >
+    Detection is deliberately tuned to over-trigger. A false hardship costs
+    money; a missed one costs a person. Routes to FORBORNE, which is absorbing.
+
+- id: FRZ-COMPLAINT
+  class: INVARIANT
+  scope: [voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: subject_flag
+  params:
+    flag: complaint_open
+  on_violation: BLOCK
+  informed_by:
+    - instrument: "RBI Fair Practices Code - grievance redressal"
+      force: in_force
+  rationale: >
+    Continuing to chase while a complaint is open is what turns one complaint
+    into a regulatory one. Ends when a human closes it, so it blocks.
+
+- id: FRZ-PAYMENT-PENDING
+  class: TEMPORAL
+  scope: [silent, voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: freeze_until
+  params:
+    flag: payment_pending
+    until_field: payment_pending_until
+    extra_hours: 0
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal collections policy"
+      force: in_force
+  rationale: >
+    Chasing someone who has already paid but whose settlement has not landed is
+    the single worst experience this system can produce. Cheap to implement,
+    catastrophic to omit.
+
+- id: FRZ-ISSUER
+  class: TEMPORAL
+  scope: [silent, voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: freeze_until
+  params:
+    flag: issuer_degraded
+    until_field: issuer_degraded_until
+    extra_hours: 2
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal reliability policy"
+      force: in_force
+  rationale: >
+    An issuer-layer failure is nobody's fault but the issuer's. Zero customer
+    contact until resolution plus a two-hour stand-down. If the resolution time
+    is unknown the check returns no timestamp and the remedy becomes a BLOCK.
+
+- id: FRZ-ERASURE
+  class: INVARIANT
+  scope: [silent, voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: statutory
+  status: in_force
+  in_force_from: null
+  check: subject_flag
+  params:
+    flag: erasure_requested
+  on_violation: BLOCK_PERMANENT
+  informed_by:
+    - instrument: "Digital Personal Data Protection Act 2023, section 12"
+      force: in_force
+      note: "Right to erasure of personal data."
+  rationale: >
+    Once erasure is requested there is no lawful basis left for processing this
+    subject's data for collections, so every channel stops permanently.

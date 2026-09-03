@@ -1,0 +1,132 @@
+# ABS-* : absolute prohibitions. BLOCK_PERMANENT, never reconsidered.
+#
+# These are the seven things no expected-value argument may reopen. They are
+# INVARIANT class, so `project` treats them as authoritative and the Allocator
+# never even scores an action they forbid.
+
+- id: ABS-THIRD-PARTY
+  class: INVARIANT
+  scope: [voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: statutory
+  status: in_force
+  in_force_from: null
+  check: target_is_obligor
+  params: {}
+  on_violation: BLOCK_PERMANENT
+  informed_by:
+    - instrument: "RBI Fair Practices Code - recovery agent conduct"
+      force: in_force
+      note: >
+        Prohibits approaching persons other than the borrower or guarantor in
+        connection with recovery.
+  rationale: >
+    Contacting anyone who is not the obligor or a guarantor discloses the debt
+    to a third party. UNKNOWN relationship fails closed, because a guess here
+    is a disclosure.
+
+- id: ABS-EMPLOYER
+  class: INVARIANT
+  scope: [voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: draft
+  in_force_from: null
+  check: target_is_employer
+  params: {}
+  on_violation: BLOCK_PERMANENT
+  informed_by:
+    - instrument: "Draft harmonised norms for recovery agents"
+      force: draft
+      note: >
+        At consultation stage. Not a direction, and must not be presented as
+        one. We apply the restriction regardless.
+  rationale: >
+    Contacting an employer or workplace applies social pressure rather than
+    pursuing the debt. We enforce this now even though the instrument behind it
+    is still draft.
+
+- id: ABS-OPTOUT
+  class: INVARIANT
+  scope: [voice, whatsapp, sms, email, payment_link, instalment]
+  basis: statutory
+  status: in_force
+  in_force_from: null
+  check: channel_opted_out
+  params: {}
+  on_violation: BLOCK_PERMANENT
+  informed_by:
+    - instrument: "TRAI Telecom Commercial Communications Customer Preference Regulations"
+      force: in_force
+  rationale: >
+    An opt-out is per channel and permanent for that channel. Other channels
+    remain available, which is why this is not a subject-level block.
+
+- id: ABS-CONSENT
+  class: INVARIANT
+  scope: [voice, whatsapp, sms, email, payment_link, instalment]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: channel_consent
+  params: {}
+  on_violation: BLOCK
+  informed_by:
+    - instrument: "Digital Personal Data Protection Act 2023"
+      force: in_force
+      note: >
+        Enacted; subordinate rules are being phased. We enforce channel consent
+        as policy now rather than waiting for every provision to commence,
+        which is why the basis here is our own choice and not statutory.
+  rationale: >
+    A missing or unreadable consent record is not consent. UNKNOWN blocks, so
+    an unreachable consent store degrades to silence rather than to contact.
+
+- id: ABS-FORBORNE
+  class: INVARIANT
+  scope: [silent, voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: subject_flag
+  params:
+    flag: forborne
+  on_violation: BLOCK_PERMANENT
+  informed_by:
+    - instrument: "Internal vulnerable-customer policy"
+      force: in_force
+  rationale: >
+    FORBORNE is an absorbing state. Scope deliberately includes silent rail
+    actions: forbearance means collection stops, not that it continues quietly.
+
+- id: ABS-DISCLOSE
+  class: INVARIANT
+  scope: [voice, human, instalment, postal]
+  basis: statutory
+  status: in_force
+  in_force_from: null
+  check: identity_verified
+  params: {}
+  on_violation: BLOCK
+  informed_by:
+    - instrument: "RBI Fair Practices Code - borrower privacy"
+      force: in_force
+  rationale: >
+    No account detail is stated until the person on the line has been verified
+    as the obligor. Wrong-party disclosure is unrecoverable.
+
+- id: ABS-MINOR
+  class: INVARIANT
+  scope: [silent, voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: statutory
+  status: in_force
+  in_force_from: null
+  check: subject_flag
+  params:
+    flag: minor
+  on_violation: BLOCK_PERMANENT
+  informed_by:
+    - instrument: "Indian Contract Act 1872, section 11"
+      force: in_force
+      note: "An agreement with a minor is void ab initio."
+  rationale: >
+    There is no enforceable obligation to collect, so there is no legitimate
+    collections contact to make.

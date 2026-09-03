@@ -1,0 +1,113 @@
+# CD-* : per-channel and cross-channel cooldowns.
+#
+# Every one of these is basis: policy_choice. Regulatory guidance treats
+# frequency causing distress as harassment WITHOUT specifying a number.
+# Presenting any of these intervals as statutory would be a fabrication.
+#
+# Cooldowns are hard limits, never budgets. Expected value cannot buy past one,
+# because a system where enough value buys a call will eventually harass
+# someone. Which of your allowed contacts to spend is the budget question, and
+# that lives in the Allocator.
+
+- id: CD-VOICE
+  class: TEMPORAL
+  scope: [voice]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: channel_cooldown
+  params:
+    channel: voice
+    hours: 48
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal contact-frequency policy"
+      force: in_force
+      note: "No regulatory instrument specifies a number. This is our choice."
+  rationale: >
+    Minimum gap between voice attempts where nobody answered. An unanswered
+    call is legitimate repeat contact; this bounds how repeat it gets.
+
+- id: CD-VOICE-CONNECTED
+  class: TEMPORAL
+  scope: [voice]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: channel_cooldown
+  params:
+    channel: voice
+    hours: 96
+    outcomes: [connected, replied]
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal contact-frequency policy"
+      force: in_force
+  rationale: >
+    Longer than the unanswered gap on purpose. If you spoke to them you have
+    your answer, and calling again in 48 hours is pressure rather than contact.
+
+- id: CD-WHATSAPP
+  class: TEMPORAL
+  scope: [whatsapp]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: channel_cooldown
+  params:
+    channel: whatsapp
+    hours: 24
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal contact-frequency policy"
+      force: in_force
+  rationale: "Minimum gap between template messages."
+
+- id: CD-SMS
+  class: TEMPORAL
+  scope: [sms]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: channel_cooldown
+  params:
+    channel: sms
+    hours: 24
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal contact-frequency policy"
+      force: in_force
+  rationale: "Minimum gap between SMS."
+
+- id: CD-EMAIL
+  class: TEMPORAL
+  scope: [email]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: channel_cooldown
+  params:
+    channel: email
+    hours: 12
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal contact-frequency policy"
+      force: in_force
+  rationale: "Shortest of the channel cooldowns; email is the least intrusive."
+
+- id: CD-CROSS
+  class: TEMPORAL
+  scope: [voice, whatsapp, sms, email, payment_link, instalment, human, postal]
+  basis: policy_choice
+  status: in_force
+  in_force_from: null
+  check: cross_channel_cooldown
+  params:
+    hours: 6
+  on_violation: DEFER
+  informed_by:
+    - instrument: "Internal contact-frequency policy"
+      force: in_force
+  rationale: >
+    Without this, one WhatsApp, one SMS and one email inside ten minutes each
+    pass their own cooldown while the customer experiences a burst.
