@@ -22,6 +22,13 @@ dependencies = [
     # The rule registry is authored as YAML so a compliance reviewer can read
     # it without reading Python.
     "pyyaml>=6",
+    # Tabular, mixed types, non-linear thresholds, native missing-value
+    # handling, and it trains in seconds on a CPU. Deep learning would be
+    # slower and worse on this data shape.
+    "lightgbm>=4.5",
+    # Isotonic regression only. Raw GBDT scores are not probabilities, and
+    # this one feeds an expected-value product at M8.
+    "scikit-learn>=1.5",
 ]
 
 [dependency-groups]
