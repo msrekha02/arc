@@ -50,6 +50,7 @@ BANS: list[tuple[str, str]] = [
     ("arc/ingest", "arc.simulator"),
     ("arc/ledger", "arc.simulator"),
     ("arc/core", "arc.simulator"),
+    ("arc/events", "arc.simulator"),
     ("arc/llm_service", "arc.simulator"),
 ]
 
@@ -227,6 +228,7 @@ GROUND_TRUTH_ALLOWED: frozenset[str] = frozenset({"simulator", "proving_ground"}
 # absence, exactly like the module bans above.
 GROUND_TRUTH_BANNED_PACKAGES: tuple[str, ...] = (
     "allocator",
+    "events",
     "forecaster",
     "sentinel",
     "gate",
@@ -358,3 +360,84 @@ def test_ground_truth_detector_allows_the_observable_path(tmp_path: Path) -> Non
 def test_ground_truth_allowlist_is_the_harness_only() -> None:
     """Guards against the allowlist quietly growing a third member."""
     assert frozenset({"simulator", "proving_ground"}) == GROUND_TRUTH_ALLOWED
+
+
+# ---------------------------------------------------------------------------
+# The carve-out, and the proof it did not widen
+#
+# `proving_ground` is entitled to ground truth: the doubly-robust estimator
+# validates itself against the simulator's counterfactuals, and reporting an
+# estimate without its own error is a claim rather than a measurement.
+#
+# THE FAILURE MODE OF AN EXEMPTION IS THAT IT COVERS MORE THAN IT WAS WRITTEN
+# FOR. `test_ground_truth_allowlist_is_the_harness_only` pins the membership of
+# the allowlist. These pin its EFFECT: the two packages that must never reach
+# the answer key are checked to still fail on the identical body the harness is
+# allowed to contain.
+# ---------------------------------------------------------------------------
+GROUND_TRUTH_FORBIDDEN_AFTER_CARVE_OUT: tuple[str, ...] = ("forecaster", "allocator")
+
+
+@pytest.mark.parametrize("package", GROUND_TRUTH_FORBIDDEN_AFTER_CARVE_OUT)
+@pytest.mark.parametrize(
+    "body",
+    [
+        "def v(world, at):\n    return world.counterfactual('a', None, at)\n",
+        "from arc.simulator.world import LatentState\n",
+        "def v(world):\n    return world._latent('acct_1')\n",
+    ],
+    ids=["counterfactual", "latent-type", "private-door"],
+)
+def test_ground_truth_ban_still_fires_after_the_carve_out(
+    tmp_path: Path, package: str, body: str
+) -> None:
+    """The exemption is for the harness alone and did not widen to the policy.
+
+    A forecaster that reads the answer key produces a headline number
+    measuring nothing, and an allocator that reads it optimises against truth
+    it will not have in production. Both must still fail on the same code the
+    harness may legally contain.
+    """
+    _write(tmp_path, f"arc/{package}/reaches.py", body)
+    violations = _ground_truth_violations(tmp_path / "arc" / package)
+    assert violations, (
+        f"arc/{package} was allowed to reach ground truth after the "
+        f"proving_ground carve-out:\n{body}"
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "def v(world, at):\n    return world.counterfactual('a', None, at)\n",
+        "from arc.simulator.world import LatentState\n",
+    ],
+    ids=["counterfactual", "latent-type"],
+)
+def test_the_harness_may_contain_exactly_what_the_policy_may_not(tmp_path: Path, body: str) -> None:
+    """The other half of the carve-out: it does work where it is meant to.
+
+    Without this the pair above would pass just as happily if the exemption
+    had been deleted, and the suite would be asserting nothing about it.
+    """
+    _write(tmp_path, "arc/proving_ground/estimator.py", body)
+    offenders = []
+    for child in sorted((tmp_path / "arc").iterdir()):
+        if not child.is_dir() or child.name in GROUND_TRUTH_ALLOWED:
+            continue
+        offenders.extend(_ground_truth_violations(child))
+    assert not offenders, "the sweep flagged the harness, which is entitled to ground truth"
+
+
+def test_the_two_forbidden_packages_are_swept_in_reality_not_only_in_tmp() -> None:
+    """The real tree, not a fixture. The bans above are only worth their run.
+
+    A ban demonstrated on a temporary directory proves the detector works. This
+    proves it is pointed at the packages that exist on disk right now.
+    """
+    for package in GROUND_TRUTH_FORBIDDEN_AFTER_CARVE_OUT:
+        assert package in GROUND_TRUTH_BANNED_PACKAGES, f"arc/{package} dropped off the banned list"
+        assert package not in GROUND_TRUTH_ALLOWED
+        directory = REPO_ROOT / "arc" / package
+        assert directory.is_dir(), f"arc/{package} does not exist, so the ban is not being run"
+        assert not _ground_truth_violations(directory)

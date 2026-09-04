@@ -86,6 +86,16 @@ class Decision:
     sleeping_dog: bool = False
     sampled_action: ActionType | None = None
     budget_deferred: bool = False
+    # Budget headroom this subject's draw actually faced, in PRICED_BUDGETS
+    # order, at ITS OWN POSITION in the admission order.
+    #
+    # RECORDED BECAUSE THE PROPENSITY DEPENDS ON IT. Admission admits a draw
+    # exactly when its cost fits here, so the set of branches that COULD have
+    # been admitted is a function of this vector - and M11's composed
+    # behaviour policy is wrong without it. M11 used to reconstruct it by
+    # replaying the admission order from the decision record, which worked but
+    # duplicated the ordering rule outside the module that owns it.
+    residual_capacity: tuple[int, ...] = ()
 
     @property
     def action_marginals(self) -> dict[ActionType, float]:
@@ -235,6 +245,12 @@ def allocate(
     return allocation
 
 
+# Stand-in for an uncapped dimension in `residual_capacity`. A tuple of ints
+# keeps the field cheap to store and compare; `inf` would make it a float
+# vector and invite float arithmetic into a budget comparison.
+_UNBOUNDED = 2**62
+
+
 @dataclass(frozen=True)
 class _Sampled:
     """One subject's draw, before admission decides whether it fits."""
@@ -285,10 +301,17 @@ def _admit(
 
     outcome: dict[str, tuple[Candidate, bool]] = {}
     deferrals: list[Drop] = []
+    headroom: dict[str, tuple[int, ...]] = {}
 
     for index in order:
         draw = sampled[index]
         costs = draw.candidate.cost.as_tuple()
+        # Captured BEFORE this draw consumes anything, so it is the capacity
+        # this subject faced rather than what was left after it.
+        headroom[draw.subject_token] = tuple(
+            int(caps[k] - running[k]) if caps[k] != float("inf") else _UNBOUNDED
+            for k in range(len(PRICED_BUDGETS))
+        )
         if all(running[k] + costs[k] <= caps[k] for k in range(len(PRICED_BUDGETS))):
             for k in range(len(PRICED_BUDGETS)):
                 running[k] += costs[k]
@@ -329,6 +352,7 @@ def _admit(
                 sleeping_dog=draw.sleeping_dog,
                 sampled_action=draw.candidate.action,
                 budget_deferred=deferred,
+                residual_capacity=headroom[draw.subject_token],
             )
         )
     return decisions, admitted, deferrals

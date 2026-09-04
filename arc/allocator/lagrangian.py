@@ -100,7 +100,15 @@ class _Problem:
         order = sorted(range(len(candidates)), key=lambda i: candidates[i].subject_token)
         self.candidates = [candidates[i] for i in order]
         self.values = np.array([c.value for c in self.candidates], dtype=float)
-        self.costs = np.array([c.cost.as_tuple() for c in self.candidates], dtype=float)
+        # DIMENSION-MAJOR, AND ONLY DIMENSION-MAJOR. `costs @ lam` over a
+        # 450k x 6 row-major array walks memory with a six-element stride and
+        # runs at a fraction of bandwidth; `lam @ costs_t` is six contiguous
+        # sweeps. Keeping both layouts doubled the solver's footprint to forty
+        # megabytes for the sake of one indexing site, which is the wrong trade
+        # in a process that also holds a population and five arms of logs.
+        self.costs_t = np.ascontiguousarray(
+            np.array([c.cost.as_tuple() for c in self.candidates], dtype=float).T
+        )
 
         tokens = [c.subject_token for c in self.candidates]
         boundary = np.ones(len(tokens), dtype=bool)
@@ -116,18 +124,35 @@ class _Problem:
     def n_subjects(self) -> int:
         return len(self.starts)
 
-    def best_indices(self, lam: np.ndarray) -> np.ndarray:
+    def adjusted_at(self, lam: np.ndarray) -> np.ndarray:
+        """v_ia - sum_k lambda_k c^k_ia, with dropped candidates masked out.
+
+        Separated so callers that need BOTH the argmax and the values can
+        compute the array once. `spend_at` used to recompute it and gather the
+        cost matrix a second time, which cost about half the solve: the matrix
+        is twenty megabytes and the gather is random-access over all of it.
+        """
+        adjusted = self.values - lam @ self.costs_t
+        return np.where(self.active, adjusted, -np.inf)
+
+    def best_indices(self, lam: np.ndarray, adjusted: np.ndarray | None = None) -> np.ndarray:
         """Index of each subject's best candidate under the adjusted value.
 
         This is the decomposition, executed. `-inf` masks candidates the
         shrink step has dropped, so a dropped candidate can never be chosen
         without the arrays being rebuilt.
+
+        `adjusted` is accepted rather than always recomputed so a caller that
+        already has it does not pay for it twice.
         """
-        adjusted = self.values - self.costs @ lam
-        adjusted = np.where(self.active, adjusted, -np.inf)
+        if adjusted is None:
+            adjusted = self.adjusted_at(lam)
 
         segment_max = np.maximum.reduceat(adjusted, self.starts)
-        expanded = np.repeat(segment_max, self.counts)
+        # `segment_max[subject_of]` rather than `np.repeat(segment_max,
+        # counts)`. Identical output; the gather reads a 50k array that fits in
+        # cache, while repeat materialises the same 450k values the slow way.
+        expanded = segment_max[self.subject_of]
         flagged = np.flatnonzero(adjusted >= expanded)
 
         # Keep the first flagged index in each subject's block, so ties resolve
@@ -139,11 +164,18 @@ class _Problem:
         return flagged[first]
 
     def spend_at(self, lam: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Total cost per dimension, and the chosen index per subject."""
-        best = self.best_indices(lam)
-        adjusted = self.values[best] - self.costs[best] @ lam
-        taken = best[adjusted > 0.0]
-        return self.costs[taken].sum(axis=0), best
+        """Total cost per dimension, and the chosen index per subject.
+
+        The adjusted values are computed ONCE and indexed, rather than
+        recomputed from a second gather of the cost matrix. The two are
+        arithmetically identical - `adjusted[best]` is `values[best] -
+        costs[best] @ lam` by construction - and the gather was the expensive
+        half of a call that runs upwards of a thousand times per solve.
+        """
+        adjusted = self.adjusted_at(lam)
+        best = self.best_indices(lam, adjusted)
+        taken = best[adjusted[best] > 0.0]
+        return self.costs_t[:, taken].sum(axis=1), best
 
 
 def _solve_prices(problem: _Problem, caps: np.ndarray, tol: float) -> tuple[np.ndarray, int]:
@@ -220,7 +252,7 @@ def solve(
         spend_vector, best = problem.spend_at(lam)
 
     chosen: dict[str, Candidate] = {}
-    adjusted = problem.values[best] - problem.costs[best] @ lam
+    adjusted = problem.adjusted_at(lam)[best]
     for position, index in enumerate(best):
         candidate = problem.candidates[index]
         # STOP-EV: not worth its budget consumption at the current prices.
@@ -270,8 +302,9 @@ def _shrink(problem: _Problem, lam: np.ndarray, caps: np.ndarray) -> list[Drop]:
     erased from the portfolio - they are declined for this cycle, with a
     reason.
     """
-    best = problem.best_indices(lam)
-    adjusted = problem.values[best] - problem.costs[best] @ lam
+    adjusted_all = problem.adjusted_at(lam)
+    best = problem.best_indices(lam, adjusted_all)
+    adjusted = adjusted_all[best]
     treated = [
         (adjusted[position], index)
         for position, index in enumerate(best)
@@ -295,7 +328,7 @@ def _shrink(problem: _Problem, lam: np.ndarray, caps: np.ndarray) -> list[Drop]:
                 reason=DropReason.INFEASIBLE_SHRINK,
                 detail=(
                     f"{candidate.action} dropped at adjusted value "
-                    f"{problem.values[index] - float(problem.costs[index] @ lam):.2f}; "
+                    f"{problem.values[index] - float(problem.costs_t[:, index] @ lam):.2f}; "
                     f"caps {caps.tolist()} held"
                 ),
             )
