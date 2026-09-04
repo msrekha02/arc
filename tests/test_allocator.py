@@ -12,7 +12,7 @@ The eleven named tests are:
     test_do_nothing_always_in_candidate_set
     test_negative_uplift_actions_never_selected_when_silent_available
     test_infeasible_shrinks_set_does_not_relax_constraints
-    test_50k_subjects_under_30_seconds
+    test_50k_subjects_cost_matrix_is_gathered_once
 
 THE PROPENSITY IS THE PRODUCT. Everything M11 reports rests on pi(a|s) being a
 real distribution that the policy actually drew from. A deterministic policy
@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import ast
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -743,7 +743,7 @@ def test_infeasible_shrinks_set_does_not_relax_constraints(gate: Gate) -> None:
 # ===========================================================================
 # 11
 # ===========================================================================
-def test_50k_subjects_under_30_seconds() -> None:
+def test_50k_subjects_cost_matrix_is_gathered_once() -> None:
     """Fast enough to re-run live when a judge asks - measured as WORK, not seconds.
 
     SCOPE, STATED. This exercises the ALLOCATOR: candidate assembly, the
@@ -755,49 +755,60 @@ def test_50k_subjects_under_30_seconds() -> None:
     hide inside M8's budget. The measured Gate cost is reported by
     `test_gate_projection_cost_is_measured_not_hidden` so the total is visible.
 
-    WHY THIS NO LONGER ASSERTS ON WALL CLOCK.
+    WHY THIS ASSERTS NEITHER A DURATION NOR A RATIO.
 
-        On identical code, in one session, this machine produced 29.6s, 42.5s
-        and 55.0s for the same solve. That is not noise around a number, it is
-        a different number each time. A fixed-work numpy probe - four-million
-        element arrays, no ARC code in it at all - swung 44% between three
-        trials in a single process (4.77s, 3.58s, 5.15s), and ran roughly three
-        times faster at the start of the session than at the end. The machine
-        degrades under sustained load, and a wall-clock threshold on it is a
-        coin flip that reports thermal state as an allocator regression.
+        Wall clock was tried first and abandoned. On identical code, in one
+        session, this machine produced 29.6s, 42.5s and 55.0s for the same
+        solve, and a fixed-work numpy probe with no ARC code in it swung 44%
+        between three trials in a single process. A wall-clock threshold there
+        reports thermal state as an allocator regression.
+
+        A RATIO was tried second - one `spend_at` call over its own
+        `values - lam @ costs_t` matvec core - on the theory that both halves
+        see the same machine and it divides out. It does not. The core is a
+        BLAS matvec and runs on however many threads OpenBLAS decides to use;
+        the rest of `spend_at` is a segmented argmax and a column gather, and
+        those are single-threaded. Parallelism therefore shrinks the
+        denominator without touching the numerator, so the quotient tracks the
+        BLAS thread heuristic more than it tracks the allocator. Measured on
+        the same commit:
+
+            ratio, current implementation   2.64 - 3.87   Windows
+                                            5.27 - 10.31  Linux, 12 cores
+
+        The 4.2 threshold calibrated on the first range fails every run on the
+        second. Pinning BLAS to one thread does not rescue it either: pinned on
+        Linux the current implementation measures 3.61 - 4.48 and the pre-M14
+        one it was written to catch measures 4.30 - 5.53. Those overlap, so no
+        threshold on that axis separates the two implementations at all.
 
         A test that fails for reasons the code cannot fix teaches people to
         re-run it, which is worse than no test: the next real regression is
         re-run too.
 
-    WHAT IT ASSERTS INSTEAD. The cost of one `spend_at` call against the cost
-    of its own irreducible core - the `values - lam @ costs_t` matvec that any
-    correct implementation must perform - measured in the SAME process,
-    milliseconds apart, over the SAME arrays. Both halves see whatever state
-    the machine is in, so the ratio divides it out.
+    WHAT IT ASSERTS INSTEAD. The thing M14 actually changed, counted rather
+    than timed: `spend_at` gathers the twenty-megabyte cost matrix EXACTLY
+    ONCE. The implementation before it recomputed the adjusted array that
+    `best_indices` had already built, and gathered the cost matrix a second
+    time to do it. A gather count is a property of the code, not of the
+    machine, so it is identical on every platform and under every thread
+    setting.
 
-    THE THRESHOLD IS MEASURED, NOT CHOSEN. Median-of-nine paired timings,
-    repeated eight times, on this machine today:
-
-        current implementation      2.96 - 3.34
-        the implementation before   4.52 - 6.03
-        M14's fix removed the
-        duplicate gather
-
-    4.2 sits twenty-six percent above the top of the first range and seven
-    percent below the bottom of the second. It therefore passes work the allocator
-    genuinely does and fails the specific regression it was written after -
-    recomputing the adjusted array that `best_indices` already built, and
-    gathering the cost matrix a second time to do it.
+    THE COUNTER IS PROVEN ABLE TO FAIL. The pre-M14 implementation is run in
+    this same test, against the same problem, and observed to gather twice. A
+    structural assertion that has never been seen to fail is a spelling test,
+    so the regression it was written for is exhibited here rather than
+    described. Both implementations are also asserted to return identical
+    output, which is what makes the optimisation sound rather than merely fast.
 
     THE SECOND AXIS IS CALL COUNT, and it is asserted separately. Per-call cost
     and number of calls are independent regressions: a solver that halved its
-    per-call cost while tripling its coordinate passes would pass a ratio test
-    and be slower.
+    per-call cost while tripling its coordinate passes would pass a gather
+    count and still be slower.
 
-    The wall clock is still measured and REPORTED, because a human reading the
-    output should be able to see how long it actually took. It is simply not
-    what fails the build.
+    The wall clock and the matvec ratio are still measured and REPORTED,
+    because a human reading the output should be able to see what a call
+    costs. They are simply not what fails the build.
     """
     subjects = 50_000
     candidates = synthetic_candidates(subjects)
@@ -824,20 +835,35 @@ def test_50k_subjects_under_30_seconds() -> None:
         total_mass += propensity
     elapsed = time.perf_counter() - started
 
+    current_gathers, current_result = _gathers_for(candidates, solution, _Problem.spend_at)
+    pre_m14_gathers, pre_m14_result = _gathers_for(candidates, solution, _pre_m14_spend_at)
+
     ratio, core_ms, call_ms = _spend_at_cost_ratio(candidates, solution)
     print(
         f"\n  50k subjects: {elapsed:.1f}s wall clock, {solution.passes} coordinate passes"
+        f"\n  cost-matrix gathers per spend_at: {current_gathers}"
+        f" (the implementation M14 replaced: {pre_m14_gathers})"
         f"\n  spend_at {call_ms:.2f}ms against a {core_ms:.2f}ms matvec core"
-        f" - ratio {ratio:.2f} (budget {SPEND_AT_RATIO_BUDGET})"
+        f" - ratio {ratio:.2f}, REPORTED only: it tracks BLAS threading, not the allocator"
     )
 
-    assert ratio < SPEND_AT_RATIO_BUDGET, (
-        f"one spend_at call costs {ratio:.2f}x its own matvec core, over the "
-        f"{SPEND_AT_RATIO_BUDGET} budget. Measured today: {ratio:.2f}x here, 2.96-3.34x "
-        f"for the current implementation, 4.52-6.03x for the one that recomputed the "
-        f"adjusted array and gathered the cost matrix twice. Wall clock this run was "
-        f"{elapsed:.1f}s, which on this machine means nothing on its own"
+    assert current_gathers == 1, (
+        f"spend_at gathered the cost matrix {current_gathers} times, not once. That "
+        f"matrix is twenty megabytes and the gather is random access over all of it, "
+        f"in a call that runs upwards of a thousand times per solve. M14 removed the "
+        f"second gather and this is it coming back"
     )
+    assert pre_m14_gathers == 2, (
+        f"the implementation M14 replaced gathered {pre_m14_gathers} times, not twice, "
+        f"so this counter is no longer watching what it was written to watch. Fix the "
+        f"counter before trusting the assertion above it"
+    )
+
+    current_spend, current_best = current_result
+    pre_m14_spend, pre_m14_best = pre_m14_result
+    assert np.allclose(np.asarray(current_spend), np.asarray(pre_m14_spend))
+    assert np.array_equal(np.asarray(current_best), np.asarray(pre_m14_best))
+
     assert solution.passes <= MAX_COORDINATE_PASSES, (
         f"the solve took {solution.passes} coordinate passes, over the "
         f"{MAX_COORDINATE_PASSES} budget. Per-call cost and call count are "
@@ -848,28 +874,69 @@ def test_50k_subjects_under_30_seconds() -> None:
     assert 0.0 < total_mass / subjects <= 1.0
 
 
-# Measured today, median-of-nine paired timings repeated twelve times on a
-# warmed process: current 2.96-3.34, the pre-M14 implementation 4.52-6.03.
-# See the docstring above for why this is a ratio and not a number of seconds.
-SPEND_AT_RATIO_BUDGET = 4.2
-
 # Convergence is typically eleven passes on this instance. Twenty leaves room
 # for a harder batch without leaving room for a solver that stopped converging.
 MAX_COORDINATE_PASSES = 20
 
 
+class _CountingCosts(np.ndarray):
+    """A view of the cost matrix that counts how often it is gathered from.
+
+    Only fancy indexing is counted - `costs_t[:, taken]`, the twenty-megabyte
+    random-access copy. A basic slice is a view and costs nothing, and
+    `lam @ costs_t` is the matvec every correct implementation must do, so
+    neither of those is the thing being watched.
+    """
+
+    gathers = 0
+
+    def __getitem__(self, key: object) -> object:
+        if isinstance(key, tuple) and any(isinstance(part, np.ndarray) for part in key):
+            _CountingCosts.gathers += 1
+        return super().__getitem__(key)
+
+
+def _pre_m14_spend_at(problem: _Problem, lam: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The implementation M14 replaced, kept so the gate can be seen to fail.
+
+    It recomputes the adjusted value at the chosen indices from a SECOND gather
+    of the cost matrix, rather than indexing the array `best_indices` has
+    already built. Arithmetically identical, twice the memory traffic.
+    """
+    best = problem.best_indices(lam)
+    gathered = problem.values[best] - lam @ problem.costs_t[:, best]
+    taken = best[gathered > 0.0]
+    return problem.costs_t[:, taken].sum(axis=1), best
+
+
+def _gathers_for(
+    candidates: Sequence[Candidate],
+    solution: Solution,
+    implementation: Callable[[_Problem, np.ndarray], tuple[np.ndarray, np.ndarray]],
+) -> tuple[int, tuple[np.ndarray, np.ndarray]]:
+    """Cost-matrix gathers in one `spend_at` call, and what that call returned.
+
+    A fresh `_Problem` per implementation, so neither can be charged for a
+    gather the other made.
+    """
+    problem = _Problem(list(candidates))
+    lam = np.array([solution.shadow_prices.get(key, 0.0) for key in PRICED_BUDGETS], dtype=float)
+    problem.costs_t = problem.costs_t.view(_CountingCosts)
+
+    _CountingCosts.gathers = 0
+    result = implementation(problem, lam)
+    return _CountingCosts.gathers, result
+
+
 def _spend_at_cost_ratio(
     candidates: Sequence[Candidate], solution: Solution
 ) -> tuple[float, float, float]:
-    """One `spend_at` call, against the matvec every implementation must do.
+    """One `spend_at` call against the matvec, REPORTED and never asserted.
 
-    Medians rather than means: a single sample on a contended machine is
-    dominated by whatever else the scheduler did during it, and the median of
-    nine is stable to a few percent where one sample is not.
-
-    Both halves run interleaved over the same arrays in the same process, so
-    the machine's state at that instant is common to numerator and denominator
-    and divides out.
+    This is a human-readable number, not a gate. See the docstring above for
+    why it cannot be one: the denominator is BLAS and scales with thread count
+    while the numerator does not, so the quotient moves with the machine's
+    thread heuristic rather than with the allocator.
     """
     problem = _Problem(list(candidates))
     lam = np.array([solution.shadow_prices.get(key, 0.0) for key in PRICED_BUDGETS], dtype=float)
@@ -880,12 +947,6 @@ def _spend_at_cost_ratio(
     def whole() -> object:
         return problem.spend_at(lam)
 
-    # WARM UP PROPERLY. The first measurement after a full fifty-thousand
-    # subject solve reads cold: the arrays were just rebuilt, the caches hold
-    # whatever the solve left in them, and the ratio comes out around 4.0 where
-    # a settled machine gives 3.0-3.3. One warm-up round is not enough to clear
-    # that, and a threshold set from cold numbers would have to be so loose it
-    # stopped discriminating.
     for _ in range(3):
         core()
         whole()
