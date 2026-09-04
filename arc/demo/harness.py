@@ -401,6 +401,61 @@ def adversarial_lines() -> list[str]:
     return lines
 
 
+def llm_disabled_pipeline_lines(*, seed: int = 1, size: int = 300, cycles: int = 2) -> list[str]:
+    """The attack that must SUCCEED rather than be refused.
+
+    The system has to be completely functional with the model off, degrading in
+    message quality and never in correctness or compliance. So this one is not
+    in the refusal table: a REFUSED line here would be the failure. It runs the
+    whole pipeline at `LLM_ENABLED=false` and reports what came out.
+
+    WHY IT PROVES ANYTHING AT ALL. Every message on this path is the canned
+    template built by substitution from the source record, so it is grounded by
+    construction and passes the same validator a model's output would face.
+    The Gate, the allocator, the ledger and the conductor never had a model in
+    them to begin with - that is what the import bans are for - so what is
+    being demonstrated is that the two places a model COULD sit both have a
+    deterministic floor under them.
+    """
+    import os
+
+    from arc.console.build import build
+    from arc.llm_service import GroundingFacts, LlmClient, llm_enabled, validate
+
+    previous = os.environ.get("LLM_ENABLED")
+    os.environ["LLM_ENABLED"] = "false"
+    try:
+        assert not llm_enabled()
+        data = build(seed=seed, size=size, cycles=cycles)
+        facts = GroundingFacts(
+            amount="Rs 1,299.00",
+            due_date="12 May 2026",
+            plan_name="Pro Monthly",
+            merchant="Acme",
+        )
+        message, verdict = LlmClient().compose_message(template_id="dunning_v1", facts=facts)
+        grounded = validate(message, facts).accepted
+    finally:
+        if previous is None:
+            os.environ.pop("LLM_ENABLED", None)
+        else:
+            os.environ["LLM_ENABLED"] = previous
+
+    arc = data.result.runs[Arm.ARC]
+    return [
+        "  LLM_ENABLED=false, full pipeline:",
+        f"    batch                {data.batch.claims:,} claims, {data.batch.subjects:,} subjects",
+        f"    diagnosis            {data.batch.issuer} issuer / "
+        f"{data.batch.merchant} merchant / {data.batch.customer} customer",
+        f"    suppressed by outage {data.batch.suppressed_by_outage}",
+        f"    decisions            {len(arc.logs):,}",
+        f"    recovered            {_inr(arc.recovered_paise)}",
+        f"    message path         canned template, grounded={grounded}, {verdict.refused_by}",
+        "",
+        "    COMPLETED. Message quality degrades; correctness and compliance do not.",
+    ]
+
+
 def breaker_lines() -> list[str]:
     """A breaker panel, so the self-monitoring three are visible in the demo."""
     readings = [

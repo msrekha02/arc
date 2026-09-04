@@ -20,6 +20,7 @@ from arc.demo.harness import (
     NARRATION_PAUSE,
     adversarial_lines,
     breaker_lines,
+    llm_disabled_pipeline_lines,
     run,
 )
 from arc.simulator.seeds import JUDGED_SEED
@@ -51,6 +52,10 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print("  circuit breakers, including the three that watch the machinery:")
         for line in breaker_lines():
+            print(line)
+        print()
+        print("  the one that must SUCCEED rather than be refused:")
+        for line in llm_disabled_pipeline_lines():
             print(line)
         return 0
 

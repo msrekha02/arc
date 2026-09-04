@@ -51,6 +51,7 @@ BANS: list[tuple[str, str]] = [
     ("arc/ledger", "arc.simulator"),
     ("arc/core", "arc.simulator"),
     ("arc/events", "arc.simulator"),
+    ("arc/voice", "arc.simulator"),
     ("arc/llm_service", "arc.simulator"),
 ]
 
@@ -229,6 +230,7 @@ GROUND_TRUTH_ALLOWED: frozenset[str] = frozenset({"simulator", "proving_ground"}
 GROUND_TRUTH_BANNED_PACKAGES: tuple[str, ...] = (
     "allocator",
     "events",
+    "voice",
     "forecaster",
     "sentinel",
     "gate",
