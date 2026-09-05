@@ -8,8 +8,9 @@ This document describes the system as it exists in this repository. Where a clai
 is enforced by a test rather than by convention, the test is named. Where
 something is a known limitation, it is stated as one.
 
-Companion documents: `CLAUDE.md` holds the working conventions; `README.md` holds
-the quick start.
+`README.md` is the companion: the problem, the walkthrough with diagrams, the
+key decisions, installation and how to run it. This document is the depth
+behind it.
 
 ---
 
