@@ -1,93 +1,118 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ARC scoreboard</title><style>
 :root{
---u:4px;
 --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px;
---sp-7:28px;--sp-8:32px;--sp-10:40px;--sp-12:48px;
---fs-1:10px;--fs-2:11px;--fs-3:12px;--fs-4:13px;--fs-5:15px;--fs-6:20px;
---fs-7:26px;--fs-8:40px;--fs-9:30px;--fs-9:30px;
---lh-tight:1.1;--lh-snug:1.4;--lh-base:1.6;
---tr-1:0.14em;--tr-2:0.1em;--tr-3:0.04em;--tr-neg:-0.02em;
---r-1:3px;--r-2:6px;--r-3:10px;--r-pill:999px;
---bg:#0d1117;
---s-1:#121a22;
---s-2:#1b242e;
---s-3:#222c38;
---line:#1f2934;
---edge:#2f3d4c;
---fg:#e9eff5;
---fg-2:#a6b4c2;
---fg-3:#93a1af;
---accent:#e5ab4d;
---accent-dim:#7f5f2a;
---accent-wash:rgba(229,171,77,0.12);
---shadow-1:0 1px 2px rgba(0,0,0,0.45);
---shadow-2:0 4px 16px -6px rgba(0,0,0,0.6);
---shadow-3:0 10px 30px -12px rgba(0,0,0,0.7);
---glow:0 6px 22px -10px rgba(229,171,77,0.45);
---dur-1:150ms;--dur-2:180ms;
+--sp-8:32px;--sp-10:40px;--sp-12:48px;--sp-16:64px;
+--fs-label:10px;--fs-section:11px;--fs-3:12px;--fs-table:13px;--fs-body:15px;
+--fs-card:26px;--fs-headline:40px;--fs-title:38px;
+--lh-tight:1.05;--lh-snug:1.4;--lh-base:1.6;
+--tr-section:0.14em;--tr-label:0.12em;--tr-3:0.04em;--tr-neg:-0.02em;
+--r-1:4px;--r-2:6px;--r-3:10px;--r-pill:999px;
+--bg:#0A0C11;
+--surface:#12151C;
+--surface-2:#1A1F29;
+--border:rgba(255,255,255,0.07);
+--border-hi:rgba(255,255,255,0.14);
+--rule:rgba(255,255,255,0.04);
+--row-hover:rgba(255,255,255,0.02);
+--text:#E8EAED;
+--text-dim:#A1AAB6;
+--text-mute:#7E8797;
+--accent:#F0B429;
+--accent-deep:#D19A1F;
+--accent-dim:#8A6516;
+--good:#4ADE80;
+--bad:#F87171;
+--card:linear-gradient(180deg,var(--surface-2),var(--surface));
+--shadow:0 1px 2px rgba(0,0,0,0.5),0 8px 24px rgba(0,0,0,0.25);
+--shadow-lift:0 2px 4px rgba(0,0,0,0.5),0 14px 34px rgba(0,0,0,0.35);
+--glow:0 0 24px rgba(240,180,41,0.15);
+--dur:160ms;
 --ease:cubic-bezier(0.2,0.7,0.3,1);
 --ring:0 0 0 2px var(--bg),0 0 0 4px var(--accent);
---measure:1080px;
+--measure:1280px;
+--gutter:32px;
 --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
 --badge-law-fg:#a3ccff;--badge-law-bg:#122539;--badge-law-line:#2f4d75;
 --badge-net-fg:#e8c48f;--badge-net-bg:#2b2215;--badge-net-line:#5a4326;
 --badge-ours-fg:#95d6b6;--badge-ours-bg:#0f281e;--badge-ours-line:#2d5443;
 --badge-prov-fg:#f0a8a8;--badge-prov-bg:#2d1719;--badge-prov-line:#602e32;
---split-2:#8391a0;--split-3:#4a5866;--split-4:#2a3541;
+--bar-grey-a:#444D5C;--bar-grey-b:#586374;
 color-scheme:dark;
 }
 *{box-sizing:border-box;}
-body{margin:0;background:var(--bg);color:var(--fg);
-font:var(--fs-4)/var(--lh-base) var(--sans);-webkit-font-smoothing:antialiased;
+body{margin:0;background:var(--bg);color:var(--text);
+font:var(--fs-body)/var(--lh-base) var(--sans);-webkit-font-smoothing:antialiased;
 text-rendering:optimizeLegibility;}
-main{max-width:var(--measure);margin:0 auto;
-padding:var(--sp-6) var(--sp-6) var(--sp-8);}
+svg.defs{position:absolute;width:0;height:0;overflow:hidden;}
+.topbar{position:sticky;top:0;z-index:20;height:56px;background:var(--surface);
+border-bottom:1px solid var(--border);}
+.topbar-in{max-width:var(--measure);margin:0 auto;height:56px;
+padding:0 var(--gutter);display:flex;align-items:center;
+justify-content:space-between;gap:var(--sp-4);}
+.brand{display:flex;align-items:baseline;gap:var(--sp-3);min-width:0;}
+.brand .mark{font:600 var(--fs-body)/1 var(--sans);color:var(--text);
+letter-spacing:var(--tr-3);}
+.brand .full{font:600 var(--fs-section)/1 var(--sans);color:var(--text-mute);
+text-transform:uppercase;letter-spacing:var(--tr-label);white-space:nowrap;
+overflow:hidden;text-overflow:ellipsis;}
+.stamp{font:var(--fs-section)/1 var(--mono);color:var(--text-dim);
+font-variant-numeric:tabular-nums;background:var(--surface-2);
+border:1px solid var(--border);border-radius:var(--r-pill);
+padding:6px var(--sp-3);white-space:nowrap;}
+main{max-width:var(--measure);margin:0 auto;padding:0 var(--gutter) var(--sp-16);}
 main>*:last-child{margin-bottom:0;}
-h1{font:700 var(--fs-9)/1.15 var(--sans);letter-spacing:var(--tr-neg);
-margin:0 0 var(--sp-2);color:var(--fg);}
-h2{font:600 var(--fs-2)/1 var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-1);color:var(--fg-3);margin:var(--sp-5) 0 var(--sp-3);
-padding:0 0 var(--sp-2);border-bottom:1px solid var(--line);}
-.sub{color:var(--fg-2);font-size:var(--fs-5);margin:0 0 var(--sp-5);
-max-width:80ch;}
-strong{color:var(--fg);font-weight:600;}
-code{font:var(--fs-3) var(--mono);color:var(--fg);background:var(--s-2);
-padding:1px var(--sp-1);border-radius:var(--r-1);}
+h1{font:700 var(--fs-title)/1.12 var(--sans);letter-spacing:var(--tr-neg);
+margin:var(--sp-10) 0 var(--sp-3);color:var(--text);}
+h2{font:600 var(--fs-section)/1 var(--sans);text-transform:uppercase;
+letter-spacing:var(--tr-section);color:var(--text-mute);
+margin:var(--sp-12) 0 var(--sp-4);padding:0 0 var(--sp-3);
+border-bottom:1px solid var(--border);}
+.sub{color:var(--text-dim);font-size:var(--fs-body);line-height:var(--lh-base);
+margin:0 0 var(--sp-8);max-width:80ch;}
+strong{color:var(--text);font-weight:600;}
+code{font:var(--fs-3) var(--mono);color:var(--text);background:var(--surface-2);
+padding:2px var(--sp-1);border-radius:var(--r-1);
+border:1px solid var(--border);}
 a{color:var(--accent);text-decoration:none;
-transition:color var(--dur-1) var(--ease),opacity var(--dur-1) var(--ease);}
+transition:color var(--dur) var(--ease),opacity var(--dur) var(--ease);}
 a:hover{text-decoration:underline;}
 a:focus-visible,[tabindex]:focus-visible{outline:none;box-shadow:var(--ring);
 border-radius:var(--r-1);}
 ul{margin:0 0 var(--sp-4);padding-left:var(--sp-5);}
-li{margin:0 0 var(--sp-2);color:var(--fg-2);}
-.k{font:600 var(--fs-1)/1 var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-2);color:var(--fg-3);}
-table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;}
-th{font:600 var(--fs-1)/1 var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-2);color:var(--fg-3);text-align:left;
-padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--edge);}
-td{padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line);
-color:var(--fg-2);transition:background var(--dur-1) var(--ease);}
-td:first-child{color:var(--fg);}
+li{margin:0 0 var(--sp-2);color:var(--text-dim);}
+.k{font:600 var(--fs-label)/1 var(--sans);text-transform:uppercase;
+letter-spacing:var(--tr-label);color:var(--text-mute);}
+.tile,.cards a,.versus .side,.compare .col,.headline .big{
+background:var(--card);border:1px solid var(--border);
+border-radius:var(--r-3);box-shadow:var(--shadow);
+transition:border-color var(--dur) var(--ease),
+box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease);}
+.tile:hover,.versus .side:hover,.compare .col:hover{border-color:var(--border-hi);}
+table{border-collapse:collapse;width:100%;font-size:var(--fs-table);
+font-variant-numeric:tabular-nums;margin:0 0 var(--sp-4);}
+th{font:600 var(--fs-label)/1 var(--sans);text-transform:uppercase;
+letter-spacing:var(--tr-label);color:var(--text-mute);text-align:left;
+padding:var(--sp-3);border-bottom:1px solid var(--border-hi);}
+td{padding:var(--sp-3);border-bottom:1px solid var(--rule);color:var(--text-dim);
+transition:background var(--dur) var(--ease);}
+td:first-child{color:var(--text);}
 td.n,th.n{text-align:right;font-family:var(--mono);
 font-variant-numeric:tabular-nums;}
-td.n{color:var(--fg);}
-tbody tr:hover td,table tr:hover td{background:var(--s-1);}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
-gap:var(--sp-3);margin:0 0 var(--sp-3);}
-.tile{background:var(--s-1);border:1px solid var(--line);
-border-radius:var(--r-2);padding:var(--sp-3) var(--sp-4);
-box-shadow:var(--shadow-1);
-transition:border-color var(--dur-2) var(--ease),
-background var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease),
-transform var(--dur-2) var(--ease);}
-.tile:hover{background:var(--s-2);border-color:var(--edge);
-box-shadow:var(--shadow-2);transform:translateY(-1px);}
-.tile .v{margin-top:var(--sp-2);font:600 var(--fs-7)/var(--lh-tight) var(--mono);
-font-variant-numeric:tabular-nums;letter-spacing:var(--tr-neg);color:var(--fg);}
-.tile.point{border-color:var(--accent-dim);background:var(--s-2);
-box-shadow:var(--shadow-1),var(--glow);}
+td.n{color:var(--text);}
+tbody tr:hover td,table tr:hover td{background:var(--row-hover);}
+td.good{color:var(--good);}
+td.bad{color:var(--bad);}
+tr.arm-arc td:first-child{color:var(--accent);font-weight:600;}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+gap:var(--sp-4);margin:0 0 var(--sp-4);}
+.tile{padding:var(--sp-5) var(--sp-6);}
+.tile:hover{box-shadow:var(--shadow-lift);transform:translateY(-1px);}
+.tile .v{margin-top:var(--sp-3);
+font:600 var(--fs-card)/var(--lh-tight) var(--mono);
+font-variant-numeric:tabular-nums;letter-spacing:var(--tr-neg);color:var(--text);}
+.tile.point{border-color:var(--accent-dim);box-shadow:var(--shadow),var(--glow);}
+.tile.point:hover{border-color:var(--accent);}
 .tile.point .v{color:var(--accent);}
 @property --n{syntax:"<integer>";initial-value:0;inherits:false;}
 @keyframes settle{from{opacity:0;transform:translateY(var(--sp-2));
@@ -106,12 +131,11 @@ filter:blur(6px);}to{opacity:1;transform:none;filter:blur(0);}}
 .tile .v{animation:settle 0.55s var(--ease) both var(--d);}
 .tile .v.count{position:relative;}
 .tile .v.count::after{content:counter(c);counter-reset:c var(--n);
-position:absolute;inset:0;background:var(--s-1);
+position:absolute;inset:0;background:var(--surface);
 animation:tick 0.9s var(--ease) both var(--d),
 hand_off 0.9s linear both var(--d);}
-.tile.point .v.count::after{background:var(--s-2);}
-.badge{display:inline-block;padding:2px var(--sp-2);border-radius:var(--r-1);
-font:600 var(--fs-1)/1.5 var(--mono);letter-spacing:var(--tr-3);
+.badge{display:inline-block;padding:3px var(--sp-2);border-radius:var(--r-1);
+font:600 var(--fs-label)/1.5 var(--mono);letter-spacing:var(--tr-3);
 white-space:nowrap;border:1px solid transparent;}
 .badge-law{color:var(--badge-law-fg) !important;
 background:var(--badge-law-bg) !important;border-color:var(--badge-law-line);}
@@ -121,167 +145,181 @@ background:var(--badge-net-bg) !important;border-color:var(--badge-net-line);}
 background:var(--badge-ours-bg) !important;border-color:var(--badge-ours-line);}
 .badge-provisional{color:var(--badge-prov-fg) !important;
 background:var(--badge-prov-bg) !important;border-color:var(--badge-prov-line);}
-.bar{height:var(--sp-2);border-radius:var(--r-1);background:var(--line);
-overflow:hidden;display:flex;}
+.bar{height:10px;border-radius:var(--r-2);background:var(--surface);
+border:1px solid var(--border);overflow:hidden;display:flex;}
 .bar span{display:block;height:100%;}
-.bar span:nth-child(1){background:var(--accent) !important;}
-.bar span:nth-child(2){background:var(--split-2) !important;}
-.bar span:nth-child(3){background:var(--split-3) !important;}
-.bar span:nth-child(4){background:var(--split-4) !important;}
-.decay{display:block;width:100%;height:auto;margin:0 0 var(--sp-3);}
-.decay .grid{stroke:var(--line);stroke-width:1;}
-.decay .tick{fill:var(--fg-3);font:600 10px var(--mono);
-text-transform:uppercase;letter-spacing:var(--tr-2);}
-.decay .series .stroke{fill:none;stroke:var(--fg-3);stroke-width:2.5;
+.bar span:nth-child(1){
+background:linear-gradient(90deg,var(--accent-deep),var(--accent)) !important;}
+.bar span:nth-child(2){background:linear-gradient(90deg,#5B6675,#748193) !important;}
+.bar span:nth-child(3){background:linear-gradient(90deg,#3A424F,#4B5563) !important;}
+.bar span:nth-child(4){background:linear-gradient(90deg,#232A34,#2E3742) !important;}
+#g-accent stop:first-child{stop-color:var(--accent-deep);}
+#g-accent stop:last-child{stop-color:var(--accent);}
+#g-grey stop:first-child{stop-color:var(--bar-grey-a);}
+#g-grey stop:last-child{stop-color:var(--bar-grey-b);}
+.hero,.arms{overflow:visible;}
+.hero .track,.arms .track{fill:var(--surface);}
+.hero .track,.hero .fill{rx:6px;height:36px;}
+.arms .track,.arms .rec,.arms .inc{rx:6px;height:24px;}
+.hero .fill,.arms .rec{fill:url(#g-grey);}
+.hero .win .fill,.hero.win .fill,.arms .inc{fill:url(#g-accent);}
+.hero .win .fill,.arms .inc{filter:drop-shadow(0 0 12px rgba(240,180,41,0.30));}
+.hero>g.hbar:last-of-type .fill{filter:drop-shadow(-3px 0 0 var(--bad));}
+.decay{display:block;width:100%;height:auto;margin:0 0 var(--sp-4);}
+.decay .grid{stroke:var(--border);stroke-width:1;}
+.decay .tick{fill:var(--text-mute);font:600 10px var(--sans);
+text-transform:uppercase;letter-spacing:var(--tr-label);}
+.decay .series .stroke{fill:none;stroke:var(--bar-grey-b);stroke-width:2.5;
 stroke-linejoin:round;stroke-linecap:round;}
-.decay .series .dot{fill:var(--fg-3);}
-.decay .series .endlabel{fill:var(--fg-2);font:600 12px var(--mono);
-text-transform:uppercase;letter-spacing:var(--tr-2);}
-.decay .series .endvalue{fill:var(--fg);font:600 14px var(--mono);}
-.decay .series .startvalue{fill:var(--fg-3);font:600 11px var(--mono);}
+.decay .series .dot{fill:var(--bar-grey-b);}
+.decay .series .endlabel{fill:var(--text-dim);font:600 12px var(--sans);
+text-transform:uppercase;letter-spacing:var(--tr-label);}
+.decay .series .endvalue{fill:var(--text);font:600 14px var(--mono);
+font-variant-numeric:tabular-nums;}
+.decay .series .startvalue{fill:var(--text-mute);font:600 11px var(--mono);
+font-variant-numeric:tabular-nums;}
 .decay .series.arc .stroke{stroke:var(--accent);stroke-width:3;}
 .decay .series.arc .dot{fill:var(--accent);}
 .decay .series.arc .endlabel{fill:var(--accent);}
 .decay .series.arc .endvalue{fill:var(--accent);}
-.legend{display:grid;gap:var(--sp-2);margin:0 0 var(--sp-2);}
+.legend{display:grid;gap:var(--sp-2);margin:0 0 var(--sp-3);}
 .legend .leg{display:grid;grid-template-columns:auto 14ch 1fr auto;
-gap:var(--sp-3);align-items:baseline;padding:var(--sp-2) 0;
-border-top:1px solid var(--line);font:var(--fs-3) var(--mono);
-font-variant-numeric:tabular-nums;color:var(--fg-2);}
+gap:var(--sp-3);align-items:baseline;padding:var(--sp-3) 0;
+border-top:1px solid var(--rule);font:var(--fs-table) var(--mono);
+font-variant-numeric:tabular-nums;color:var(--text-dim);}
 .legend .swatch{width:14px;height:3px;border-radius:var(--r-1);
-background:var(--fg-3);align-self:center;}
-.legend .arc .swatch{background:var(--accent);}
-.legend .name{color:var(--fg);text-transform:uppercase;
-letter-spacing:var(--tr-2);font-weight:600;font-size:var(--fs-1);}
+background:var(--bar-grey-b);align-self:center;}
+.legend .arc .swatch{background:linear-gradient(90deg,var(--accent-deep),var(--accent));}
+.legend .name{color:var(--text);text-transform:uppercase;
+letter-spacing:var(--tr-label);font-weight:600;font-size:var(--fs-label);
+font-family:var(--sans);}
 .legend .arc .name{color:var(--accent);}
-.legend .share{color:var(--fg-3);}
-.arms{display:block;width:100%;margin:var(--sp-1) 0 var(--sp-2);}
-.arms .track{fill:var(--line);}
-.arms .rec{fill:var(--fg-3);transition:fill var(--dur-1) var(--ease);}
-.arms .inc{fill:var(--accent);}
-.arms .lab{fill:var(--fg-2);font:600 9px var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-2);}
-.arms .val{fill:var(--fg);font:600 var(--fs-1) var(--mono);}
-.arms .row:hover .rec{fill:var(--fg-2);}
-.headline{display:grid;grid-template-columns:2fr 1fr;gap:var(--sp-3);
-margin:0 0 var(--sp-2);align-items:stretch;}
-.headline .big{background:var(--s-2);border:1px solid var(--accent-dim);
-border-radius:var(--r-3);padding:var(--sp-4) var(--sp-5);
-box-shadow:var(--shadow-2),var(--glow);display:flex;flex-direction:column;
-justify-content:center;}
-.headline .big .v{font:600 var(--fs-8)/1.05 var(--mono);
-letter-spacing:var(--tr-neg);color:var(--accent);margin-top:var(--sp-2);
+.legend .share{color:var(--text-mute);}
+.arms{display:block;width:100%;margin:var(--sp-2) 0 var(--sp-4);}
+.arms .lab{fill:var(--text-dim);font:600 9px var(--sans);
+text-transform:uppercase;letter-spacing:var(--tr-label);}
+.arms .val{fill:var(--text);font:600 var(--fs-label) var(--mono);
 font-variant-numeric:tabular-nums;}
-.headline .big .ci{color:var(--fg-2);font:var(--fs-3) var(--mono);
-margin-top:var(--sp-2);}
-.headline .big .den{color:var(--fg-3);
-font:var(--fs-2)/var(--lh-snug) var(--sans);margin-top:var(--sp-2);
+.arms .row:hover .rec{fill:var(--text-mute);}
+.headline{display:grid;grid-template-columns:2fr 1fr;gap:var(--sp-4);
+margin:0 0 var(--sp-4);align-items:stretch;}
+.headline .big{border-color:var(--accent-dim);
+box-shadow:var(--shadow),var(--glow);padding:var(--sp-6) var(--sp-8);
+display:flex;flex-direction:column;justify-content:center;}
+.headline .big:hover{border-color:var(--accent);}
+.headline .big .v{font:700 var(--fs-headline)/var(--lh-tight) var(--mono);
+letter-spacing:var(--tr-neg);color:var(--accent);margin-top:var(--sp-3);
+font-variant-numeric:tabular-nums;}
+.headline .big .ci{color:var(--text-dim);font:var(--fs-table) var(--mono);
+font-variant-numeric:tabular-nums;margin-top:var(--sp-3);}
+.headline .big .den{color:var(--text-mute);
+font:var(--fs-3)/var(--lh-snug) var(--sans);margin-top:var(--sp-3);
 max-width:56ch;}
-.headline .side{display:grid;gap:var(--sp-3);align-content:stretch;}
+.headline .side{display:grid;gap:var(--sp-4);align-content:stretch;}
 .headline .side .tile{display:flex;flex-direction:column;justify-content:center;}
-.versus{display:grid;grid-template-columns:1fr auto 1fr;gap:var(--sp-3);
-align-items:stretch;margin:0 0 var(--sp-2);}
-.versus .side{background:var(--s-1);border:1px solid var(--line);
-border-radius:var(--r-2);padding:var(--sp-3) var(--sp-4);
-box-shadow:var(--shadow-1);}
-.versus .side.win{border-color:var(--accent-dim);background:var(--s-2);
-box-shadow:var(--shadow-1),var(--glow);}
-.versus .side .v{margin-top:var(--sp-2);
-font:600 var(--fs-7)/var(--lh-tight) var(--mono);
-font-variant-numeric:tabular-nums;color:var(--fg);}
+.versus{display:grid;grid-template-columns:1fr auto 1fr;gap:var(--sp-4);
+align-items:stretch;margin:0 0 var(--sp-4);}
+.versus .side{padding:var(--sp-5) var(--sp-6);}
+.versus .side.win{border-color:var(--accent-dim);
+box-shadow:var(--shadow),var(--glow);}
+.versus .side .v{margin-top:var(--sp-3);
+font:600 var(--fs-card)/var(--lh-tight) var(--mono);
+font-variant-numeric:tabular-nums;color:var(--text);}
 .versus .side.win .v{color:var(--accent);}
+.versus .side.lose .v{color:var(--bad);}
 .versus .gap{display:flex;align-items:center;justify-content:center;
-font:600 var(--fs-7) var(--mono);color:var(--accent);padding:0 var(--sp-2);
+font:600 var(--fs-card) var(--mono);color:var(--accent);padding:0 var(--sp-3);
 white-space:nowrap;}
 .hero-row{display:grid;grid-template-columns:minmax(0,2.1fr) minmax(240px,1fr);
-gap:var(--sp-5);align-items:start;margin:0 0 var(--sp-3);}
-.hero-side{display:grid;gap:var(--sp-2);align-content:start;}
-.hero{display:block;width:100%;height:auto;margin:0 0 var(--sp-3);}
-.hero .lab{fill:var(--fg-2);font:600 12px var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-2);}
-.hero .val{fill:var(--fg);font:600 15px var(--mono);}
-.hero .track{fill:var(--line);}
-.hero .fill{fill:var(--fg-3);}
-.hero.win .fill{fill:var(--accent);}
-.hero .win .fill{fill:var(--accent);}
+gap:var(--sp-6);align-items:start;margin:0 0 var(--sp-4);}
+.hero-side{display:grid;gap:var(--sp-4);align-content:start;}
+.hero{display:block;width:100%;height:auto;margin:0 0 var(--sp-4);}
+.hero .lab{fill:var(--text-dim);font:600 12px var(--sans);
+text-transform:uppercase;letter-spacing:var(--tr-label);}
+.hero .val{fill:var(--text);font:600 15px var(--mono);
+font-variant-numeric:tabular-nums;}
 .hero .win .lab{fill:var(--accent);}
 .hero .win .val{fill:var(--accent);}
 .compare{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-gap:var(--sp-3);margin:0 0 var(--sp-3);}
-.compare .col{background:var(--s-1);border:1px solid var(--line);
-border-radius:var(--r-2);padding:var(--sp-4) var(--sp-5);
-box-shadow:var(--shadow-1);display:flex;flex-direction:column;
-justify-content:center;
-transition:border-color var(--dur-2) var(--ease),
-background var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease);}
-.compare .col.win{border-color:var(--accent-dim);background:var(--s-2);
-box-shadow:var(--shadow-2),var(--glow);}
-.compare .col .v{margin-top:var(--sp-2);
-font:600 var(--fs-7)/var(--lh-tight) var(--mono);
-font-variant-numeric:tabular-nums;letter-spacing:var(--tr-neg);color:var(--fg);}
-.compare .col.win .v{color:var(--accent);font-size:var(--fs-8);}
-.finding{color:var(--fg);font:600 var(--fs-5)/var(--lh-snug) var(--sans);
-margin:0 0 var(--sp-2);padding:var(--sp-3) 0 0;max-width:74ch;
-border-top:1px solid var(--line);}
+gap:var(--sp-4);margin:0 0 var(--sp-4);}
+.compare .col{padding:var(--sp-5) var(--sp-6);display:flex;
+flex-direction:column;justify-content:center;}
+.compare .col.win{border-color:var(--accent-dim);
+box-shadow:var(--shadow),var(--glow);}
+.compare .col .v{margin-top:var(--sp-3);
+font:600 var(--fs-card)/var(--lh-tight) var(--mono);
+font-variant-numeric:tabular-nums;letter-spacing:var(--tr-neg);color:var(--text);}
+.compare .col.win .v{color:var(--accent);font-size:var(--fs-headline);
+font-weight:700;}
+.finding{color:var(--text);font:600 var(--fs-body)/var(--lh-snug) var(--sans);
+margin:0 0 var(--sp-3);padding:var(--sp-4) 0 0;max-width:74ch;
+border-top:1px solid var(--border);}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));
-gap:var(--sp-3);margin:0 0 var(--sp-2);}
-.cards a{background:var(--s-1);border:1px solid var(--line);
-border-radius:var(--r-2);padding:var(--sp-4);color:var(--fg);
-text-decoration:none;box-shadow:var(--shadow-1);display:flex;
-flex-direction:column;gap:var(--sp-2);
-transition:border-color var(--dur-2) var(--ease),
-background var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease),
-transform var(--dur-2) var(--ease);}
-.cards a:hover{border-color:var(--accent-dim);background:var(--s-2);
-box-shadow:var(--shadow-2);transform:translateY(-2px);text-decoration:none;}
-.cards a:focus-visible{box-shadow:var(--ring);border-radius:var(--r-2);}
-.cards a .t{font:600 14px/1.2 var(--sans);}
-.cards a .d{color:var(--fg-2);font-size:var(--fs-3);margin-top:0;}
-.facts{list-style:none;margin:0 0 var(--sp-2);padding:0;
-border-top:1px solid var(--line);}
-.facts li{display:grid;grid-template-columns:10ch 1fr;gap:var(--sp-4);
-align-items:baseline;padding:var(--sp-3) 0;
-border-bottom:1px solid var(--line);color:var(--fg);margin:0;
-font-size:var(--fs-5);transition:background var(--dur-1) var(--ease);}
-.facts li:hover{background:var(--s-1);}
-.facts li .n{font:600 var(--fs-5)/1 var(--mono);color:var(--accent);
+gap:var(--sp-4);margin:0 0 var(--sp-3);}
+.cards a{position:relative;padding:var(--sp-5) var(--sp-6);color:var(--text);
+text-decoration:none;display:flex;flex-direction:column;gap:var(--sp-2);
+overflow:hidden;}
+.cards a::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;
+background:linear-gradient(90deg,var(--accent-deep),var(--accent));opacity:0;
+transition:opacity var(--dur) var(--ease);}
+.cards a:hover{border-color:var(--border-hi);box-shadow:var(--shadow-lift);
+transform:translateY(-2px);text-decoration:none;}
+.cards a:hover::before{opacity:1;}
+.cards a:focus-visible{box-shadow:var(--ring);border-radius:var(--r-3);}
+.cards a .t{font:600 var(--fs-body)/1.2 var(--sans);}
+.cards a .d{color:var(--text-dim);font-size:var(--fs-table);
+line-height:var(--lh-snug);margin-top:0;}
+.facts{list-style:none;margin:0 0 var(--sp-3);padding:0;
+border-top:1px solid var(--border);}
+.facts li{display:grid;grid-template-columns:12ch 1fr;gap:var(--sp-5);
+align-items:baseline;padding:var(--sp-4) 0;
+border-bottom:1px solid var(--rule);color:var(--text-dim);margin:0;
+font-size:var(--fs-body);transition:background var(--dur) var(--ease);}
+.facts li:hover{background:var(--row-hover);}
+.facts li .n{font:600 var(--fs-body)/1 var(--mono);color:var(--accent);
 font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right;}
-.tl{margin:0;padding:0 0 0 var(--sp-6);border-left:1px solid var(--edge);
+.tl{margin:0;padding:0 0 0 var(--sp-6);border-left:1px solid var(--border);
 list-style:none;}
-.tl>li{position:relative;margin:0 0 var(--sp-5);padding:0;color:var(--fg);}
+.tl>li{position:relative;margin:0 0 var(--sp-6);padding:0;color:var(--text);}
 .tl>li:last-child{margin-bottom:0;}
 .tl>li::before{content:"";position:absolute;left:-29px;top:5px;width:9px;
 height:9px;border-radius:var(--r-pill);background:var(--bg);
-border:1px solid var(--fg-3);
-transition:background var(--dur-2) var(--ease),
-box-shadow var(--dur-2) var(--ease);}
+border:1px solid var(--text-mute);
+transition:background var(--dur) var(--ease),
+box-shadow var(--dur) var(--ease);}
 .tl>li.hit::before{background:var(--accent);border-color:var(--accent);
 box-shadow:var(--glow);}
-.tl .stage{font:600 var(--fs-1)/1 var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-1);color:var(--fg-3);margin:0 0 var(--sp-2);}
+.tl .stage{font:600 var(--fs-label)/1 var(--sans);text-transform:uppercase;
+letter-spacing:var(--tr-section);color:var(--text-mute);margin:0 0 var(--sp-3);}
 .tl dl{display:grid;grid-template-columns:max-content 1fr;
-gap:var(--sp-1) var(--sp-4);margin:0 0 var(--sp-2);}
-.tl dt{font:600 var(--fs-1)/1.5 var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-2);color:var(--fg-3);}
-.tl dd{margin:0;font:var(--fs-4)/1.5 var(--mono);
-font-variant-numeric:tabular-nums;color:var(--fg);}
-.tl .line{color:var(--fg-2);font-size:var(--fs-3);margin:0;max-width:74ch;}
-.tl table{margin:0 0 var(--sp-2);}
-.note{color:var(--fg-2);font-size:var(--fs-3);margin:var(--sp-2) 0 0;
-max-width:80ch;}
-.endpoint{color:var(--fg);font:600 var(--fs-3)/var(--lh-snug) var(--mono);
-font-variant-numeric:tabular-nums;margin:var(--sp-2) 0 0;}
-.prose p{margin:0 0 var(--sp-3);max-width:74ch;color:var(--fg);}
-.prose .step{border-left:2px solid var(--edge);padding:0 0 0 var(--sp-4);
-margin:0 0 var(--sp-4);}
-@media (max-width:820px){
+gap:var(--sp-1) var(--sp-5);margin:0 0 var(--sp-3);}
+.tl dt{font:600 var(--fs-label)/1.5 var(--sans);text-transform:uppercase;
+letter-spacing:var(--tr-label);color:var(--text-mute);}
+.tl dd{margin:0;font:var(--fs-table)/1.5 var(--mono);
+font-variant-numeric:tabular-nums;color:var(--text);}
+.tl .line{color:var(--text-dim);font-size:var(--fs-table);
+line-height:var(--lh-base);margin:0;max-width:74ch;}
+.tl table{margin:0 0 var(--sp-3);}
+.note{color:var(--text-dim);font-size:var(--fs-table);
+line-height:var(--lh-base);margin:var(--sp-3) 0 0;max-width:80ch;}
+.endpoint{color:var(--text);font:600 var(--fs-table)/var(--lh-snug) var(--mono);
+font-variant-numeric:tabular-nums;margin:var(--sp-3) 0 0;}
+.prose p{margin:0 0 var(--sp-4);max-width:74ch;color:var(--text-dim);}
+.prose .step{border-left:2px solid var(--border-hi);padding:0 0 0 var(--sp-5);
+margin:0 0 var(--sp-5);}
+@media (max-width:900px){
 .headline{grid-template-columns:1fr;}
 .versus{grid-template-columns:1fr;}
 .versus .gap{justify-content:flex-start;}
+.hero-row{grid-template-columns:1fr;}
+}
+@media (max-width:600px){
+:root{--gutter:16px;--fs-title:28px;--fs-headline:30px;}
+.brand .full{display:none;}
 }
 @media (prefers-reduced-motion:reduce){
 *{animation:none !important;transition:none !important;}
 .tile:hover,.cards a:hover{transform:none;}
 .tile .v.count::after{display:none;}
 }
-</style></head><body><main><h1>Scoreboard</h1><p class="sub">Incremental against naive_dunning, seed 3, 4 cycles. Denominator: recovered rupees over claims the arm attempted in this batch; claims never attempted are excluded from the numerator and the denominator alike</p><div class="headline"><div class="big"><div class="k">incremental recovered per rupee spent, against naive dunning</div><div class="v">137.46x</div><div class="ci">₹2,78,592.08 incremental. Bootstrap 95% CI on recovered rupees ₹6,68,966.21 to ₹8,42,204.36, subjects resampled as clusters</div><div class="den">Spend is marginal channel cost only: messaging, retries and voice minutes. Compute, human-tier time and amortised build are not in the denominator.</div></div><div class="side"><div class="tile"><div class="k">DR error, develop seed</div><div class="v">2.00%</div></div><div class="tile point"><div class="k">DR error, judged seed 3</div><div class="v">8.59%</div></div></div></div><p class="note">Both estimator errors are shown and the judged seed is the worse one. Reporting only the develop figure would be selecting the seed after seeing the result, which is the thing the three-seed discipline exists to prevent.</p><h2>Cost per rupee collected &mdash; the efficiency gap</h2><div class="versus"><div class="side win"><div class="k">arc</div><div class="v">0.003</div></div><div class="gap">9x cheaper</div><div class="side"><div class="k">greedy unconstrained</div><div class="v">0.027</div></div></div><p class="note">Spending more to collect the same rupee is not a strategy. This was a cell in the middle of the table; it is the second result on the screen.</p><h2>Recovery per cycle &mdash; what the constraints buy</h2><div class="tiles"><svg class="decay" viewBox="0 0 760 300" role="img" aria-label="recovery per cycle, both arms on one axis"><g class="axis"><line class="grid" x1="12.0" y1="266.0" x2="552.0" y2="266.0"/><line class="grid" x1="12.0" y1="206.5" x2="552.0" y2="206.5"/><line class="grid" x1="12.0" y1="147.0" x2="552.0" y2="147.0"/><line class="grid" x1="12.0" y1="87.5" x2="552.0" y2="87.5"/><line class="grid" x1="12.0" y1="28.0" x2="552.0" y2="28.0"/><text class="tick" x="12.0" y="290.0" text-anchor="middle">cycle 1</text><text class="tick" x="192.0" y="290.0" text-anchor="middle">cycle 2</text><text class="tick" x="372.0" y="290.0" text-anchor="middle">cycle 3</text><text class="tick" x="552.0" y="290.0" text-anchor="middle">cycle 4</text></g><g class="series"><path class="stroke" d="M12.0,28.0 L192.0,153.6 L372.0,217.0 L552.0,230.1"/><circle class="dot" cx="12.0" cy="28.0" r="3.5"/><circle class="dot" cx="192.0" cy="153.6" r="3.5"/><circle class="dot" cx="372.0" cy="217.0" r="3.5"/><circle class="dot" cx="552.0" cy="230.1" r="3.5"/><text class="endlabel" x="564.0" y="226.1">greedy unconstrained</text><text class="endvalue" x="564.0" y="243.1">₹53,594.65</text><text class="startvalue" x="20.0" y="18.0">₹3,55,127.98</text></g><g class="series arc"><path class="stroke" d="M12.0,77.4 L192.0,137.2 L372.0,169.0 L552.0,186.8"/><circle class="dot" cx="12.0" cy="77.4" r="3.5"/><circle class="dot" cx="192.0" cy="137.2" r="3.5"/><circle class="dot" cx="372.0" cy="169.0" r="3.5"/><circle class="dot" cx="552.0" cy="186.8" r="3.5"/><text class="endlabel" x="564.0" y="182.8">arc</text><text class="endvalue" x="564.0" y="199.8">₹1,18,205.98</text><text class="startvalue" x="20.0" y="67.4">₹2,81,479.08</text></g></svg><div class='legend'><div class='leg'><span class='swatch'></span><span class='name'>greedy unconstrained</span><span class='track'>₹3,55,127.98 &rarr; ₹1,67,641.61 &rarr; ₹73,147.24 &rarr; ₹53,594.65</span><span class='share'>ends at 15% of cycle 1</span></div><div class='leg arc'><span class='swatch'></span><span class='name'>arc</span><span class='track'>₹2,81,479.08 &rarr; ₹1,92,174.99 &rarr; ₹1,44,666.47 &rarr; ₹1,18,205.98</span><span class='share'>ends at 42% of cycle 1</span></div></div></div><p class="note">The unconstrained arm contacts everyone every cycle and burns the population down doing it: its recovery decays as the response model's annoyance term bites, and by the fourth cycle it is collecting less than the constrained arm it started ahead of. That crossover is the argument for the constraints, and it is why beating it on net value is a result rather than an accident.</p><h2>Arms &mdash; recovery and guardrails, one table</h2><table><tr><th>arm</th><th class='n'>recovered</th><th class='n'>incremental</th><th class='n'>spend</th><th class='n'>compl/1k</th><th class='n'>optout/1k</th><th class='n'>cancel</th><th class='n'>cost/&#8377;</th><th class='n'>ptp kept</th><th class='n'>prevented</th></tr><tr><td>null</td><td class='n'>₹5,24,475.34</td><td class='n'>₹66,540.90</td><td class='n'>₹0.00</td><td class='n'>0.00</td><td class='n'>0.00</td><td class='n'>0.000</td><td class='n'>0.000</td><td class='n'>0.00</td><td class='n'>₹79,420.79</td></tr><tr><td>naive_dunning</td><td class='n'>₹4,57,934.44</td><td class='n'>₹0.00</td><td class='n'>₹1,406.97</td><td class='n'>9.57</td><td class='n'>16.58</td><td class='n'>0.019</td><td class='n'>0.003</td><td class='n'>0.01</td><td class='n'>₹23,589.36</td></tr><tr><td>gateway_default</td><td class='n'>₹6,88,239.73</td><td class='n'>₹2,30,305.29</td><td class='n'>₹231.60</td><td class='n'>0.00</td><td class='n'>0.00</td><td class='n'>0.000</td><td class='n'>0.000</td><td class='n'>0.00</td><td class='n'>₹64,359.00</td></tr><tr><td>greedy_unconstrained</td><td class='n'>₹6,49,511.48</td><td class='n'>₹1,91,577.04</td><td class='n'>₹17,252.70</td><td class='n'>11.97</td><td class='n'>30.78</td><td class='n'>0.046</td><td class='n'>0.027</td><td class='n'>0.10</td><td class='n'>₹15,951.10</td></tr><tr><td>arc</td><td class='n'>₹7,36,526.52</td><td class='n'>₹2,78,592.08</td><td class='n'>₹2,026.73</td><td class='n'>4.62</td><td class='n'>13.86</td><td class='n'>0.034</td><td class='n'>0.003</td><td class='n'>0.04</td><td class='n'>₹16,586.62</td></tr></table><p class="note">Prevention is the last column and is NEVER added into recovery. Money that never failed was never recovered.</p><h2>Recovery by arm &mdash; the incremental part in the accent</h2><svg class="arms" viewBox="0 0 720 140" role="img" aria-label="recovery by arm"><g class="row"><text class="lab" x="0" y="11.5">null</text><rect class="track" x="132.0" y="0.0" width="492.0" height="16.0" rx="2"/><rect class="rec" x="132.0" y="0.0" width="350.3" height="16.0" rx="2"/><rect class="inc" x="132.0" y="0.0" width="44.4" height="16.0" rx="2"/><text class="val" x="720" y="11.5" text-anchor="end">₹5,24,475.34</text></g><g class="row"><text class="lab" x="0" y="39.5">naive_dunning</text><rect class="track" x="132.0" y="28.0" width="492.0" height="16.0" rx="2"/><rect class="rec" x="132.0" y="28.0" width="305.9" height="16.0" rx="2"/><rect class="inc" x="132.0" y="28.0" width="0.0" height="16.0" rx="2"/><text class="val" x="720" y="39.5" text-anchor="end">₹4,57,934.44</text></g><g class="row"><text class="lab" x="0" y="67.5">gateway_default</text><rect class="track" x="132.0" y="56.0" width="492.0" height="16.0" rx="2"/><rect class="rec" x="132.0" y="56.0" width="459.7" height="16.0" rx="2"/><rect class="inc" x="132.0" y="56.0" width="153.8" height="16.0" rx="2"/><text class="val" x="720" y="67.5" text-anchor="end">₹6,88,239.73</text></g><g class="row"><text class="lab" x="0" y="95.5">greedy_unconstrained</text><rect class="track" x="132.0" y="84.0" width="492.0" height="16.0" rx="2"/><rect class="rec" x="132.0" y="84.0" width="433.9" height="16.0" rx="2"/><rect class="inc" x="132.0" y="84.0" width="128.0" height="16.0" rx="2"/><text class="val" x="720" y="95.5" text-anchor="end">₹6,49,511.48</text></g><g class="row"><text class="lab" x="0" y="123.5">arc</text><rect class="track" x="132.0" y="112.0" width="492.0" height="16.0" rx="2"/><rect class="rec" x="132.0" y="112.0" width="492.0" height="16.0" rx="2"/><rect class="inc" x="132.0" y="112.0" width="186.1" height="16.0" rx="2"/><text class="val" x="720" y="123.5" text-anchor="end">₹7,36,526.52</text></g></svg><p class="note">Full bar is what the arm recovered; the accent segment is what it recovered above the comparator. The same two figures as the first two columns of the table, drawn so the gap is visible from the back of a room.</p><h2>Estimator error against simulator ground truth</h2><div class="tiles"><div class="tile"><div class="k">develop seed</div><div class="v">2.00%</div></div><div class="tile point"><div class="k">judged seed 3</div><div class="v">8.59%</div></div></div><p class="note">Both are shown, and the judged seed is the worse one. Reporting only the develop figure would be selecting the seed after seeing the result, which is the thing the three-seed discipline exists to prevent.</p></main></body></html>
+</style></head><body><svg class="defs" aria-hidden="true" focusable="false"><defs><linearGradient id="g-accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#D19A1F"/><stop offset="1" stop-color="#F0B429"/></linearGradient><linearGradient id="g-grey" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#444D5C"/><stop offset="1" stop-color="#586374"/></linearGradient></defs></svg><header class="topbar"><div class="topbar-in"><div class="brand"><span class="mark">ARC</span><span class="full">autonomous revenue continuity</span></div><div class="stamp">seed 3 &middot; 5c60e67c</div></div></header><main><h1>Scoreboard</h1><p class="sub">Incremental against naive_dunning, seed 3, 4 cycles. Denominator: recovered rupees over claims the arm attempted in this batch; claims never attempted are excluded from the numerator and the denominator alike</p><div class="headline"><div class="big"><div class="k">incremental recovered per rupee spent, against naive dunning</div><div class="v">137.46x</div><div class="ci">₹2,78,592.08 incremental. Bootstrap 95% CI on recovered rupees ₹6,68,966.21 to ₹8,42,204.36, subjects resampled as clusters</div><div class="den">Spend is marginal channel cost only: messaging, retries and voice minutes. Compute, human-tier time and amortised build are not in the denominator.</div></div><div class="side"><div class="tile"><div class="k">DR error, develop seed</div><div class="v">2.00%</div></div><div class="tile point"><div class="k">DR error, judged seed 3</div><div class="v">8.59%</div></div></div></div><p class="note">Both estimator errors are shown and the judged seed is the worse one. Reporting only the develop figure would be selecting the seed after seeing the result, which is the thing the three-seed discipline exists to prevent.</p><h2>Cost per rupee collected &mdash; the efficiency gap</h2><div class="versus"><div class="side win"><div class="k">arc</div><div class="v">0.003</div></div><div class="gap">9x cheaper</div><div class="side"><div class="k">greedy unconstrained</div><div class="v">0.027</div></div></div><p class="note">Spending more to collect the same rupee is not a strategy. This was a cell in the middle of the table; it is the second result on the screen.</p><h2>Recovery per cycle &mdash; what the constraints buy</h2><div class="tiles"><svg class="decay" viewBox="0 0 760 300" role="img" aria-label="recovery per cycle, both arms on one axis"><g class="axis"><line class="grid" x1="12.0" y1="266.0" x2="552.0" y2="266.0"/><line class="grid" x1="12.0" y1="206.5" x2="552.0" y2="206.5"/><line class="grid" x1="12.0" y1="147.0" x2="552.0" y2="147.0"/><line class="grid" x1="12.0" y1="87.5" x2="552.0" y2="87.5"/><line class="grid" x1="12.0" y1="28.0" x2="552.0" y2="28.0"/><text class="tick" x="12.0" y="290.0" text-anchor="middle">cycle 1</text><text class="tick" x="192.0" y="290.0" text-anchor="middle">cycle 2</text><text class="tick" x="372.0" y="290.0" text-anchor="middle">cycle 3</text><text class="tick" x="552.0" y="290.0" text-anchor="middle">cycle 4</text></g><g class="series"><path class="stroke" d="M12.0,28.0 L192.0,153.6 L372.0,217.0 L552.0,230.1"/><circle class="dot" cx="12.0" cy="28.0" r="3.5"/><circle class="dot" cx="192.0" cy="153.6" r="3.5"/><circle class="dot" cx="372.0" cy="217.0" r="3.5"/><circle class="dot" cx="552.0" cy="230.1" r="3.5"/><text class="endlabel" x="564.0" y="226.1">greedy unconstrained</text><text class="endvalue" x="564.0" y="243.1">₹53,594.65</text><text class="startvalue" x="20.0" y="18.0">₹3,55,127.98</text></g><g class="series arc"><path class="stroke" d="M12.0,77.4 L192.0,137.2 L372.0,169.0 L552.0,186.8"/><circle class="dot" cx="12.0" cy="77.4" r="3.5"/><circle class="dot" cx="192.0" cy="137.2" r="3.5"/><circle class="dot" cx="372.0" cy="169.0" r="3.5"/><circle class="dot" cx="552.0" cy="186.8" r="3.5"/><text class="endlabel" x="564.0" y="182.8">arc</text><text class="endvalue" x="564.0" y="199.8">₹1,18,205.98</text><text class="startvalue" x="20.0" y="67.4">₹2,81,479.08</text></g></svg><div class='legend'><div class='leg'><span class='swatch'></span><span class='name'>greedy unconstrained</span><span class='track'>₹3,55,127.98 &rarr; ₹1,67,641.61 &rarr; ₹73,147.24 &rarr; ₹53,594.65</span><span class='share'>ends at 15% of cycle 1</span></div><div class='leg arc'><span class='swatch'></span><span class='name'>arc</span><span class='track'>₹2,81,479.08 &rarr; ₹1,92,174.99 &rarr; ₹1,44,666.47 &rarr; ₹1,18,205.98</span><span class='share'>ends at 42% of cycle 1</span></div></div></div><p class="note">The unconstrained arm contacts everyone every cycle and burns the population down doing it: its recovery decays as the response model's annoyance term bites, and by the fourth cycle it is collecting less than the constrained arm it started ahead of. That crossover is the argument for the constraints, and it is why beating it on net value is a result rather than an accident.</p><h2>Arms &mdash; recovery and guardrails, one table</h2><table><tr><th>arm</th><th class='n'>recovered</th><th class='n'>incremental</th><th class='n'>spend</th><th class='n'>compl/1k</th><th class='n'>optout/1k</th><th class='n'>cancel</th><th class='n'>cost/&#8377;</th><th class='n'>ptp kept</th><th class='n'>prevented</th></tr><tr class='arm arm-null'><td>null</td><td class='n'>₹5,24,475.34</td><td class='n'>₹66,540.90</td><td class='n'>₹0.00</td><td class='n good'>0.00</td><td class='n good'>0.00</td><td class='n'>0.000</td><td class='n'>0.000</td><td class='n'>0.00</td><td class='n'>₹79,420.79</td></tr><tr class='arm arm-naive_dunning'><td>naive_dunning</td><td class='n'>₹4,57,934.44</td><td class='n'>₹0.00</td><td class='n'>₹1,406.97</td><td class='n'>9.57</td><td class='n'>16.58</td><td class='n'>0.019</td><td class='n'>0.003</td><td class='n'>0.01</td><td class='n'>₹23,589.36</td></tr><tr class='arm arm-gateway_default'><td>gateway_default</td><td class='n'>₹6,88,239.73</td><td class='n'>₹2,30,305.29</td><td class='n'>₹231.60</td><td class='n good'>0.00</td><td class='n good'>0.00</td><td class='n'>0.000</td><td class='n'>0.000</td><td class='n'>0.00</td><td class='n'>₹64,359.00</td></tr><tr class='arm arm-greedy_unconstrained'><td>greedy_unconstrained</td><td class='n'>₹6,49,511.48</td><td class='n'>₹1,91,577.04</td><td class='n'>₹17,252.70</td><td class='n bad'>11.97</td><td class='n bad'>30.78</td><td class='n'>0.046</td><td class='n'>0.027</td><td class='n'>0.10</td><td class='n'>₹15,951.10</td></tr><tr class='arm arm-arc'><td>arc</td><td class='n'>₹7,36,526.52</td><td class='n'>₹2,78,592.08</td><td class='n'>₹2,026.73</td><td class='n good'>4.62</td><td class='n good'>13.86</td><td class='n'>0.034</td><td class='n'>0.003</td><td class='n'>0.04</td><td class='n'>₹16,586.62</td></tr></table><p class="note">Prevention is the last column and is NEVER added into recovery. Money that never failed was never recovered.</p><h2>Recovery by arm &mdash; the incremental part in the accent</h2><svg class="arms" viewBox="0 0 720 140" role="img" aria-label="recovery by arm"><g class="row"><text class="lab" x="0" y="11.5">null</text><rect class="track" x="132.0" y="0.0" width="492.0" height="16.0" rx="2"/><rect class="rec" x="132.0" y="0.0" width="350.3" height="16.0" rx="2"/><rect class="inc" x="132.0" y="0.0" width="44.4" height="16.0" rx="2"/><text class="val" x="720" y="11.5" text-anchor="end">₹5,24,475.34</text></g><g class="row"><text class="lab" x="0" y="39.5">naive_dunning</text><rect class="track" x="132.0" y="28.0" width="492.0" height="16.0" rx="2"/><rect class="rec" x="132.0" y="28.0" width="305.9" height="16.0" rx="2"/><rect class="inc" x="132.0" y="28.0" width="0.0" height="16.0" rx="2"/><text class="val" x="720" y="39.5" text-anchor="end">₹4,57,934.44</text></g><g class="row"><text class="lab" x="0" y="67.5">gateway_default</text><rect class="track" x="132.0" y="56.0" width="492.0" height="16.0" rx="2"/><rect class="rec" x="132.0" y="56.0" width="459.7" height="16.0" rx="2"/><rect class="inc" x="132.0" y="56.0" width="153.8" height="16.0" rx="2"/><text class="val" x="720" y="67.5" text-anchor="end">₹6,88,239.73</text></g><g class="row"><text class="lab" x="0" y="95.5">greedy_unconstrained</text><rect class="track" x="132.0" y="84.0" width="492.0" height="16.0" rx="2"/><rect class="rec" x="132.0" y="84.0" width="433.9" height="16.0" rx="2"/><rect class="inc" x="132.0" y="84.0" width="128.0" height="16.0" rx="2"/><text class="val" x="720" y="95.5" text-anchor="end">₹6,49,511.48</text></g><g class="row"><text class="lab" x="0" y="123.5">arc</text><rect class="track" x="132.0" y="112.0" width="492.0" height="16.0" rx="2"/><rect class="rec" x="132.0" y="112.0" width="492.0" height="16.0" rx="2"/><rect class="inc" x="132.0" y="112.0" width="186.1" height="16.0" rx="2"/><text class="val" x="720" y="123.5" text-anchor="end">₹7,36,526.52</text></g></svg><p class="note">Full bar is what the arm recovered; the accent segment is what it recovered above the comparator. The same two figures as the first two columns of the table, drawn so the gap is visible from the back of a room.</p><h2>Estimator error against simulator ground truth</h2><div class="tiles"><div class="tile"><div class="k">develop seed</div><div class="v">2.00%</div></div><div class="tile point"><div class="k">judged seed 3</div><div class="v">8.59%</div></div></div><p class="note">Both are shown, and the judged seed is the worse one. Reporting only the develop figure would be selecting the seed after seeing the result, which is the thing the three-seed discipline exists to prevent.</p></main></body></html>

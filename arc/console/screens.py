@@ -37,11 +37,13 @@ from arc.console.badges import (
     not_in_force,
 )
 from arc.core.money import Paise, format_inr
+from arc.core.reproducibility import JUDGED_DIGEST
 from arc.core.types import CauseLayer
 from arc.gate.lattice import Verdict
 from arc.gate.registry import RuleRegistry
 from arc.proving_ground.arms import Arm
 from arc.proving_ground.metrics import Scoreboard
+from arc.simulator.seeds import JUDGED_SEED
 
 # ---------------------------------------------------------------------------
 # Shared chrome
@@ -51,13 +53,35 @@ from arc.proving_ground.metrics import Scoreboard
 # DARK BY DEFAULT AND NOT BY PREFERENCE. These screens are read off a projector
 # in a room with the lights on. `prefers-color-scheme` would hand half of those
 # rooms a light theme that washes out, so the theme is fixed and the contrast is
-# set for the worst case. Measured after this pass: 16.34:1 primary text,
-# 15.15:1 tile figures, 8.71:1 lowest badge, 7.67:1 accent figure, 7.17:1 dim
-# labels - every one at or above what the previous palette measured.
+# set for the worst case - which is the LIGHTEST surface, the top of a card's
+# gradient, not the page background. Measured against `--surface-2` after this
+# pass: 13.70:1 primary text, 7.03:1 dim prose, 4.56:1 mute labels, 8.86:1
+# accent figures, 9.47:1 good, 5.97:1 bad. Body text clears AAA and nothing
+# clears less than AA.
 #
-# ELEVATION BY TONE, NOT BY BORDER. Three surfaces above the base, each a step
-# lighter, with hairlines and soft shadows doing the separating. Heavy borders
-# read as boxes on a projector; tone reads as depth.
+#     TWO GREYS WERE LIGHTENED TO GET THERE, and the reason is worth keeping.
+#     A mid-grey that passes on the page background can still fail on a card,
+#     because a card is lighter than the page by construction. `--text-mute`
+#     at #6B7280 measured 3.42:1 on `--surface-2` and carries every section
+#     label, card label and table header on these screens; `--text-dim` at
+#     #9BA3AF measured 6.49:1 and carries the prose. Both were raised along
+#     the same neutral ramp until the worst surface cleared its floor, which
+#     is the smallest change that makes the palette true rather than nearly
+#     true.
+#
+#     A THIRD LIFT, ON THE GREY BAR, FOR THE SAME REASON AT THE NON-TEXT FLOOR.
+#     A bar carries its meaning in WHERE IT STOPS, so the colour that has to be
+#     findable is the right end of the gradient against the track behind it.
+#     #4B5563 on `--surface` measured 2.42:1, under the 3:1 that 1.4.11 asks of
+#     a graphic; #586374 measures exactly 3.00:1 and is still a clear step below
+#     the accent bar. The figure is printed beside every bar either way, so this
+#     was legibility on a projector rather than a conformance failure - but a
+#     bar nobody can find is not a chart.
+#
+# ELEVATION BY TONE, NOT BY BORDER. Three surfaces, each a step lighter, and a
+# card is a 180deg gradient between the top two rather than a flat fill - so a
+# card separates from the page even where its hairline is invisible on a
+# projector. Heavy borders read as boxes; tone reads as depth.
 #
 # ONE ACCENT, SPENT SPARINGLY. Amber marks the numbers that carry a claim - the
 # suppressed-by-outage tile, ARC's own series, the graded figure - and nothing
@@ -75,94 +99,119 @@ from arc.proving_ground.metrics import Scoreboard
 # request, so every explanation lives here instead.
 _STYLE = """
 :root{
---u:4px;
 --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px;
---sp-7:28px;--sp-8:32px;--sp-10:40px;--sp-12:48px;
---fs-1:10px;--fs-2:11px;--fs-3:12px;--fs-4:13px;--fs-5:15px;--fs-6:20px;
---fs-7:26px;--fs-8:40px;--fs-9:30px;--fs-9:30px;
---lh-tight:1.1;--lh-snug:1.4;--lh-base:1.6;
---tr-1:0.14em;--tr-2:0.1em;--tr-3:0.04em;--tr-neg:-0.02em;
---r-1:3px;--r-2:6px;--r-3:10px;--r-pill:999px;
---bg:#0d1117;
---s-1:#121a22;
---s-2:#1b242e;
---s-3:#222c38;
---line:#1f2934;
---edge:#2f3d4c;
---fg:#e9eff5;
---fg-2:#a6b4c2;
---fg-3:#93a1af;
---accent:#e5ab4d;
---accent-dim:#7f5f2a;
---accent-wash:rgba(229,171,77,0.12);
---shadow-1:0 1px 2px rgba(0,0,0,0.45);
---shadow-2:0 4px 16px -6px rgba(0,0,0,0.6);
---shadow-3:0 10px 30px -12px rgba(0,0,0,0.7);
---glow:0 6px 22px -10px rgba(229,171,77,0.45);
---dur-1:150ms;--dur-2:180ms;
+--sp-8:32px;--sp-10:40px;--sp-12:48px;--sp-16:64px;
+--fs-label:10px;--fs-section:11px;--fs-3:12px;--fs-table:13px;--fs-body:15px;
+--fs-card:26px;--fs-headline:40px;--fs-title:38px;
+--lh-tight:1.05;--lh-snug:1.4;--lh-base:1.6;
+--tr-section:0.14em;--tr-label:0.12em;--tr-3:0.04em;--tr-neg:-0.02em;
+--r-1:4px;--r-2:6px;--r-3:10px;--r-pill:999px;
+--bg:#0A0C11;
+--surface:#12151C;
+--surface-2:#1A1F29;
+--border:rgba(255,255,255,0.07);
+--border-hi:rgba(255,255,255,0.14);
+--rule:rgba(255,255,255,0.04);
+--row-hover:rgba(255,255,255,0.02);
+--text:#E8EAED;
+--text-dim:#A1AAB6;
+--text-mute:#7E8797;
+--accent:#F0B429;
+--accent-deep:#D19A1F;
+--accent-dim:#8A6516;
+--good:#4ADE80;
+--bad:#F87171;
+--card:linear-gradient(180deg,var(--surface-2),var(--surface));
+--shadow:0 1px 2px rgba(0,0,0,0.5),0 8px 24px rgba(0,0,0,0.25);
+--shadow-lift:0 2px 4px rgba(0,0,0,0.5),0 14px 34px rgba(0,0,0,0.35);
+--glow:0 0 24px rgba(240,180,41,0.15);
+--dur:160ms;
 --ease:cubic-bezier(0.2,0.7,0.3,1);
 --ring:0 0 0 2px var(--bg),0 0 0 4px var(--accent);
---measure:1080px;
+--measure:1280px;
+--gutter:32px;
 --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
 --badge-law-fg:#a3ccff;--badge-law-bg:#122539;--badge-law-line:#2f4d75;
 --badge-net-fg:#e8c48f;--badge-net-bg:#2b2215;--badge-net-line:#5a4326;
 --badge-ours-fg:#95d6b6;--badge-ours-bg:#0f281e;--badge-ours-line:#2d5443;
 --badge-prov-fg:#f0a8a8;--badge-prov-bg:#2d1719;--badge-prov-line:#602e32;
---split-2:#8391a0;--split-3:#4a5866;--split-4:#2a3541;
+--bar-grey-a:#444D5C;--bar-grey-b:#586374;
 color-scheme:dark;
 }
 *{box-sizing:border-box;}
-body{margin:0;background:var(--bg);color:var(--fg);
-font:var(--fs-4)/var(--lh-base) var(--sans);-webkit-font-smoothing:antialiased;
+body{margin:0;background:var(--bg);color:var(--text);
+font:var(--fs-body)/var(--lh-base) var(--sans);-webkit-font-smoothing:antialiased;
 text-rendering:optimizeLegibility;}
-main{max-width:var(--measure);margin:0 auto;
-padding:var(--sp-6) var(--sp-6) var(--sp-8);}
+svg.defs{position:absolute;width:0;height:0;overflow:hidden;}
+.topbar{position:sticky;top:0;z-index:20;height:56px;background:var(--surface);
+border-bottom:1px solid var(--border);}
+.topbar-in{max-width:var(--measure);margin:0 auto;height:56px;
+padding:0 var(--gutter);display:flex;align-items:center;
+justify-content:space-between;gap:var(--sp-4);}
+.brand{display:flex;align-items:baseline;gap:var(--sp-3);min-width:0;}
+.brand .mark{font:600 var(--fs-body)/1 var(--sans);color:var(--text);
+letter-spacing:var(--tr-3);}
+.brand .full{font:600 var(--fs-section)/1 var(--sans);color:var(--text-mute);
+text-transform:uppercase;letter-spacing:var(--tr-label);white-space:nowrap;
+overflow:hidden;text-overflow:ellipsis;}
+.stamp{font:var(--fs-section)/1 var(--mono);color:var(--text-dim);
+font-variant-numeric:tabular-nums;background:var(--surface-2);
+border:1px solid var(--border);border-radius:var(--r-pill);
+padding:6px var(--sp-3);white-space:nowrap;}
+main{max-width:var(--measure);margin:0 auto;padding:0 var(--gutter) var(--sp-16);}
 main>*:last-child{margin-bottom:0;}
-h1{font:700 var(--fs-9)/1.15 var(--sans);letter-spacing:var(--tr-neg);
-margin:0 0 var(--sp-2);color:var(--fg);}
-h2{font:600 var(--fs-2)/1 var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-1);color:var(--fg-3);margin:var(--sp-5) 0 var(--sp-3);
-padding:0 0 var(--sp-2);border-bottom:1px solid var(--line);}
-.sub{color:var(--fg-2);font-size:var(--fs-5);margin:0 0 var(--sp-5);
-max-width:80ch;}
-strong{color:var(--fg);font-weight:600;}
-code{font:var(--fs-3) var(--mono);color:var(--fg);background:var(--s-2);
-padding:1px var(--sp-1);border-radius:var(--r-1);}
+h1{font:700 var(--fs-title)/1.12 var(--sans);letter-spacing:var(--tr-neg);
+margin:var(--sp-10) 0 var(--sp-3);color:var(--text);}
+h2{font:600 var(--fs-section)/1 var(--sans);text-transform:uppercase;
+letter-spacing:var(--tr-section);color:var(--text-mute);
+margin:var(--sp-12) 0 var(--sp-4);padding:0 0 var(--sp-3);
+border-bottom:1px solid var(--border);}
+.sub{color:var(--text-dim);font-size:var(--fs-body);line-height:var(--lh-base);
+margin:0 0 var(--sp-8);max-width:80ch;}
+strong{color:var(--text);font-weight:600;}
+code{font:var(--fs-3) var(--mono);color:var(--text);background:var(--surface-2);
+padding:2px var(--sp-1);border-radius:var(--r-1);
+border:1px solid var(--border);}
 a{color:var(--accent);text-decoration:none;
-transition:color var(--dur-1) var(--ease),opacity var(--dur-1) var(--ease);}
+transition:color var(--dur) var(--ease),opacity var(--dur) var(--ease);}
 a:hover{text-decoration:underline;}
 a:focus-visible,[tabindex]:focus-visible{outline:none;box-shadow:var(--ring);
 border-radius:var(--r-1);}
 ul{margin:0 0 var(--sp-4);padding-left:var(--sp-5);}
-li{margin:0 0 var(--sp-2);color:var(--fg-2);}
-.k{font:600 var(--fs-1)/1 var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-2);color:var(--fg-3);}
-table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;}
-th{font:600 var(--fs-1)/1 var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-2);color:var(--fg-3);text-align:left;
-padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--edge);}
-td{padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line);
-color:var(--fg-2);transition:background var(--dur-1) var(--ease);}
-td:first-child{color:var(--fg);}
+li{margin:0 0 var(--sp-2);color:var(--text-dim);}
+.k{font:600 var(--fs-label)/1 var(--sans);text-transform:uppercase;
+letter-spacing:var(--tr-label);color:var(--text-mute);}
+.tile,.cards a,.versus .side,.compare .col,.headline .big{
+background:var(--card);border:1px solid var(--border);
+border-radius:var(--r-3);box-shadow:var(--shadow);
+transition:border-color var(--dur) var(--ease),
+box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease);}
+.tile:hover,.versus .side:hover,.compare .col:hover{border-color:var(--border-hi);}
+table{border-collapse:collapse;width:100%;font-size:var(--fs-table);
+font-variant-numeric:tabular-nums;margin:0 0 var(--sp-4);}
+th{font:600 var(--fs-label)/1 var(--sans);text-transform:uppercase;
+letter-spacing:var(--tr-label);color:var(--text-mute);text-align:left;
+padding:var(--sp-3);border-bottom:1px solid var(--border-hi);}
+td{padding:var(--sp-3);border-bottom:1px solid var(--rule);color:var(--text-dim);
+transition:background var(--dur) var(--ease);}
+td:first-child{color:var(--text);}
 td.n,th.n{text-align:right;font-family:var(--mono);
 font-variant-numeric:tabular-nums;}
-td.n{color:var(--fg);}
-tbody tr:hover td,table tr:hover td{background:var(--s-1);}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
-gap:var(--sp-3);margin:0 0 var(--sp-3);}
-.tile{background:var(--s-1);border:1px solid var(--line);
-border-radius:var(--r-2);padding:var(--sp-3) var(--sp-4);
-box-shadow:var(--shadow-1);
-transition:border-color var(--dur-2) var(--ease),
-background var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease),
-transform var(--dur-2) var(--ease);}
-.tile:hover{background:var(--s-2);border-color:var(--edge);
-box-shadow:var(--shadow-2);transform:translateY(-1px);}
-.tile .v{margin-top:var(--sp-2);font:600 var(--fs-7)/var(--lh-tight) var(--mono);
-font-variant-numeric:tabular-nums;letter-spacing:var(--tr-neg);color:var(--fg);}
-.tile.point{border-color:var(--accent-dim);background:var(--s-2);
-box-shadow:var(--shadow-1),var(--glow);}
+td.n{color:var(--text);}
+tbody tr:hover td,table tr:hover td{background:var(--row-hover);}
+td.good{color:var(--good);}
+td.bad{color:var(--bad);}
+tr.arm-arc td:first-child{color:var(--accent);font-weight:600;}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+gap:var(--sp-4);margin:0 0 var(--sp-4);}
+.tile{padding:var(--sp-5) var(--sp-6);}
+.tile:hover{box-shadow:var(--shadow-lift);transform:translateY(-1px);}
+.tile .v{margin-top:var(--sp-3);
+font:600 var(--fs-card)/var(--lh-tight) var(--mono);
+font-variant-numeric:tabular-nums;letter-spacing:var(--tr-neg);color:var(--text);}
+.tile.point{border-color:var(--accent-dim);box-shadow:var(--shadow),var(--glow);}
+.tile.point:hover{border-color:var(--accent);}
 .tile.point .v{color:var(--accent);}
 @property --n{syntax:"<integer>";initial-value:0;inherits:false;}
 @keyframes settle{from{opacity:0;transform:translateY(var(--sp-2));
@@ -181,12 +230,11 @@ filter:blur(6px);}to{opacity:1;transform:none;filter:blur(0);}}
 .tile .v{animation:settle 0.55s var(--ease) both var(--d);}
 .tile .v.count{position:relative;}
 .tile .v.count::after{content:counter(c);counter-reset:c var(--n);
-position:absolute;inset:0;background:var(--s-1);
+position:absolute;inset:0;background:var(--surface);
 animation:tick 0.9s var(--ease) both var(--d),
 hand_off 0.9s linear both var(--d);}
-.tile.point .v.count::after{background:var(--s-2);}
-.badge{display:inline-block;padding:2px var(--sp-2);border-radius:var(--r-1);
-font:600 var(--fs-1)/1.5 var(--mono);letter-spacing:var(--tr-3);
+.badge{display:inline-block;padding:3px var(--sp-2);border-radius:var(--r-1);
+font:600 var(--fs-label)/1.5 var(--mono);letter-spacing:var(--tr-3);
 white-space:nowrap;border:1px solid transparent;}
 .badge-law{color:var(--badge-law-fg) !important;
 background:var(--badge-law-bg) !important;border-color:var(--badge-law-line);}
@@ -196,163 +244,177 @@ background:var(--badge-net-bg) !important;border-color:var(--badge-net-line);}
 background:var(--badge-ours-bg) !important;border-color:var(--badge-ours-line);}
 .badge-provisional{color:var(--badge-prov-fg) !important;
 background:var(--badge-prov-bg) !important;border-color:var(--badge-prov-line);}
-.bar{height:var(--sp-2);border-radius:var(--r-1);background:var(--line);
-overflow:hidden;display:flex;}
+.bar{height:10px;border-radius:var(--r-2);background:var(--surface);
+border:1px solid var(--border);overflow:hidden;display:flex;}
 .bar span{display:block;height:100%;}
-.bar span:nth-child(1){background:var(--accent) !important;}
-.bar span:nth-child(2){background:var(--split-2) !important;}
-.bar span:nth-child(3){background:var(--split-3) !important;}
-.bar span:nth-child(4){background:var(--split-4) !important;}
-.decay{display:block;width:100%;height:auto;margin:0 0 var(--sp-3);}
-.decay .grid{stroke:var(--line);stroke-width:1;}
-.decay .tick{fill:var(--fg-3);font:600 10px var(--mono);
-text-transform:uppercase;letter-spacing:var(--tr-2);}
-.decay .series .stroke{fill:none;stroke:var(--fg-3);stroke-width:2.5;
+.bar span:nth-child(1){
+background:linear-gradient(90deg,var(--accent-deep),var(--accent)) !important;}
+.bar span:nth-child(2){background:linear-gradient(90deg,#5B6675,#748193) !important;}
+.bar span:nth-child(3){background:linear-gradient(90deg,#3A424F,#4B5563) !important;}
+.bar span:nth-child(4){background:linear-gradient(90deg,#232A34,#2E3742) !important;}
+#g-accent stop:first-child{stop-color:var(--accent-deep);}
+#g-accent stop:last-child{stop-color:var(--accent);}
+#g-grey stop:first-child{stop-color:var(--bar-grey-a);}
+#g-grey stop:last-child{stop-color:var(--bar-grey-b);}
+.hero,.arms{overflow:visible;}
+.hero .track,.arms .track{fill:var(--surface);}
+.hero .track,.hero .fill{rx:6px;height:36px;}
+.arms .track,.arms .rec,.arms .inc{rx:6px;height:24px;}
+.hero .fill,.arms .rec{fill:url(#g-grey);}
+.hero .win .fill,.hero.win .fill,.arms .inc{fill:url(#g-accent);}
+.hero .win .fill,.arms .inc{filter:drop-shadow(0 0 12px rgba(240,180,41,0.30));}
+.hero>g.hbar:last-of-type .fill{filter:drop-shadow(-3px 0 0 var(--bad));}
+.decay{display:block;width:100%;height:auto;margin:0 0 var(--sp-4);}
+.decay .grid{stroke:var(--border);stroke-width:1;}
+.decay .tick{fill:var(--text-mute);font:600 10px var(--sans);
+text-transform:uppercase;letter-spacing:var(--tr-label);}
+.decay .series .stroke{fill:none;stroke:var(--bar-grey-b);stroke-width:2.5;
 stroke-linejoin:round;stroke-linecap:round;}
-.decay .series .dot{fill:var(--fg-3);}
-.decay .series .endlabel{fill:var(--fg-2);font:600 12px var(--mono);
-text-transform:uppercase;letter-spacing:var(--tr-2);}
-.decay .series .endvalue{fill:var(--fg);font:600 14px var(--mono);}
-.decay .series .startvalue{fill:var(--fg-3);font:600 11px var(--mono);}
+.decay .series .dot{fill:var(--bar-grey-b);}
+.decay .series .endlabel{fill:var(--text-dim);font:600 12px var(--sans);
+text-transform:uppercase;letter-spacing:var(--tr-label);}
+.decay .series .endvalue{fill:var(--text);font:600 14px var(--mono);
+font-variant-numeric:tabular-nums;}
+.decay .series .startvalue{fill:var(--text-mute);font:600 11px var(--mono);
+font-variant-numeric:tabular-nums;}
 .decay .series.arc .stroke{stroke:var(--accent);stroke-width:3;}
 .decay .series.arc .dot{fill:var(--accent);}
 .decay .series.arc .endlabel{fill:var(--accent);}
 .decay .series.arc .endvalue{fill:var(--accent);}
-.legend{display:grid;gap:var(--sp-2);margin:0 0 var(--sp-2);}
+.legend{display:grid;gap:var(--sp-2);margin:0 0 var(--sp-3);}
 .legend .leg{display:grid;grid-template-columns:auto 14ch 1fr auto;
-gap:var(--sp-3);align-items:baseline;padding:var(--sp-2) 0;
-border-top:1px solid var(--line);font:var(--fs-3) var(--mono);
-font-variant-numeric:tabular-nums;color:var(--fg-2);}
+gap:var(--sp-3);align-items:baseline;padding:var(--sp-3) 0;
+border-top:1px solid var(--rule);font:var(--fs-table) var(--mono);
+font-variant-numeric:tabular-nums;color:var(--text-dim);}
 .legend .swatch{width:14px;height:3px;border-radius:var(--r-1);
-background:var(--fg-3);align-self:center;}
-.legend .arc .swatch{background:var(--accent);}
-.legend .name{color:var(--fg);text-transform:uppercase;
-letter-spacing:var(--tr-2);font-weight:600;font-size:var(--fs-1);}
+background:var(--bar-grey-b);align-self:center;}
+.legend .arc .swatch{background:linear-gradient(90deg,var(--accent-deep),var(--accent));}
+.legend .name{color:var(--text);text-transform:uppercase;
+letter-spacing:var(--tr-label);font-weight:600;font-size:var(--fs-label);
+font-family:var(--sans);}
 .legend .arc .name{color:var(--accent);}
-.legend .share{color:var(--fg-3);}
-.arms{display:block;width:100%;margin:var(--sp-1) 0 var(--sp-2);}
-.arms .track{fill:var(--line);}
-.arms .rec{fill:var(--fg-3);transition:fill var(--dur-1) var(--ease);}
-.arms .inc{fill:var(--accent);}
-.arms .lab{fill:var(--fg-2);font:600 9px var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-2);}
-.arms .val{fill:var(--fg);font:600 var(--fs-1) var(--mono);}
-.arms .row:hover .rec{fill:var(--fg-2);}
-.headline{display:grid;grid-template-columns:2fr 1fr;gap:var(--sp-3);
-margin:0 0 var(--sp-2);align-items:stretch;}
-.headline .big{background:var(--s-2);border:1px solid var(--accent-dim);
-border-radius:var(--r-3);padding:var(--sp-4) var(--sp-5);
-box-shadow:var(--shadow-2),var(--glow);display:flex;flex-direction:column;
-justify-content:center;}
-.headline .big .v{font:600 var(--fs-8)/1.05 var(--mono);
-letter-spacing:var(--tr-neg);color:var(--accent);margin-top:var(--sp-2);
+.legend .share{color:var(--text-mute);}
+.arms{display:block;width:100%;margin:var(--sp-2) 0 var(--sp-4);}
+.arms .lab{fill:var(--text-dim);font:600 9px var(--sans);
+text-transform:uppercase;letter-spacing:var(--tr-label);}
+.arms .val{fill:var(--text);font:600 var(--fs-label) var(--mono);
 font-variant-numeric:tabular-nums;}
-.headline .big .ci{color:var(--fg-2);font:var(--fs-3) var(--mono);
-margin-top:var(--sp-2);}
-.headline .big .den{color:var(--fg-3);
-font:var(--fs-2)/var(--lh-snug) var(--sans);margin-top:var(--sp-2);
+.arms .row:hover .rec{fill:var(--text-mute);}
+.headline{display:grid;grid-template-columns:2fr 1fr;gap:var(--sp-4);
+margin:0 0 var(--sp-4);align-items:stretch;}
+.headline .big{border-color:var(--accent-dim);
+box-shadow:var(--shadow),var(--glow);padding:var(--sp-6) var(--sp-8);
+display:flex;flex-direction:column;justify-content:center;}
+.headline .big:hover{border-color:var(--accent);}
+.headline .big .v{font:700 var(--fs-headline)/var(--lh-tight) var(--mono);
+letter-spacing:var(--tr-neg);color:var(--accent);margin-top:var(--sp-3);
+font-variant-numeric:tabular-nums;}
+.headline .big .ci{color:var(--text-dim);font:var(--fs-table) var(--mono);
+font-variant-numeric:tabular-nums;margin-top:var(--sp-3);}
+.headline .big .den{color:var(--text-mute);
+font:var(--fs-3)/var(--lh-snug) var(--sans);margin-top:var(--sp-3);
 max-width:56ch;}
-.headline .side{display:grid;gap:var(--sp-3);align-content:stretch;}
+.headline .side{display:grid;gap:var(--sp-4);align-content:stretch;}
 .headline .side .tile{display:flex;flex-direction:column;justify-content:center;}
-.versus{display:grid;grid-template-columns:1fr auto 1fr;gap:var(--sp-3);
-align-items:stretch;margin:0 0 var(--sp-2);}
-.versus .side{background:var(--s-1);border:1px solid var(--line);
-border-radius:var(--r-2);padding:var(--sp-3) var(--sp-4);
-box-shadow:var(--shadow-1);}
-.versus .side.win{border-color:var(--accent-dim);background:var(--s-2);
-box-shadow:var(--shadow-1),var(--glow);}
-.versus .side .v{margin-top:var(--sp-2);
-font:600 var(--fs-7)/var(--lh-tight) var(--mono);
-font-variant-numeric:tabular-nums;color:var(--fg);}
+.versus{display:grid;grid-template-columns:1fr auto 1fr;gap:var(--sp-4);
+align-items:stretch;margin:0 0 var(--sp-4);}
+.versus .side{padding:var(--sp-5) var(--sp-6);}
+.versus .side.win{border-color:var(--accent-dim);
+box-shadow:var(--shadow),var(--glow);}
+.versus .side .v{margin-top:var(--sp-3);
+font:600 var(--fs-card)/var(--lh-tight) var(--mono);
+font-variant-numeric:tabular-nums;color:var(--text);}
 .versus .side.win .v{color:var(--accent);}
+.versus .side.lose .v{color:var(--bad);}
 .versus .gap{display:flex;align-items:center;justify-content:center;
-font:600 var(--fs-7) var(--mono);color:var(--accent);padding:0 var(--sp-2);
+font:600 var(--fs-card) var(--mono);color:var(--accent);padding:0 var(--sp-3);
 white-space:nowrap;}
 .hero-row{display:grid;grid-template-columns:minmax(0,2.1fr) minmax(240px,1fr);
-gap:var(--sp-5);align-items:start;margin:0 0 var(--sp-3);}
-.hero-side{display:grid;gap:var(--sp-2);align-content:start;}
-.hero{display:block;width:100%;height:auto;margin:0 0 var(--sp-3);}
-.hero .lab{fill:var(--fg-2);font:600 12px var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-2);}
-.hero .val{fill:var(--fg);font:600 15px var(--mono);}
-.hero .track{fill:var(--line);}
-.hero .fill{fill:var(--fg-3);}
-.hero.win .fill{fill:var(--accent);}
-.hero .win .fill{fill:var(--accent);}
+gap:var(--sp-6);align-items:start;margin:0 0 var(--sp-4);}
+.hero-side{display:grid;gap:var(--sp-4);align-content:start;}
+.hero{display:block;width:100%;height:auto;margin:0 0 var(--sp-4);}
+.hero .lab{fill:var(--text-dim);font:600 12px var(--sans);
+text-transform:uppercase;letter-spacing:var(--tr-label);}
+.hero .val{fill:var(--text);font:600 15px var(--mono);
+font-variant-numeric:tabular-nums;}
 .hero .win .lab{fill:var(--accent);}
 .hero .win .val{fill:var(--accent);}
 .compare{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-gap:var(--sp-3);margin:0 0 var(--sp-3);}
-.compare .col{background:var(--s-1);border:1px solid var(--line);
-border-radius:var(--r-2);padding:var(--sp-4) var(--sp-5);
-box-shadow:var(--shadow-1);display:flex;flex-direction:column;
-justify-content:center;
-transition:border-color var(--dur-2) var(--ease),
-background var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease);}
-.compare .col.win{border-color:var(--accent-dim);background:var(--s-2);
-box-shadow:var(--shadow-2),var(--glow);}
-.compare .col .v{margin-top:var(--sp-2);
-font:600 var(--fs-7)/var(--lh-tight) var(--mono);
-font-variant-numeric:tabular-nums;letter-spacing:var(--tr-neg);color:var(--fg);}
-.compare .col.win .v{color:var(--accent);font-size:var(--fs-8);}
-.finding{color:var(--fg);font:600 var(--fs-5)/var(--lh-snug) var(--sans);
-margin:0 0 var(--sp-2);padding:var(--sp-3) 0 0;max-width:74ch;
-border-top:1px solid var(--line);}
+gap:var(--sp-4);margin:0 0 var(--sp-4);}
+.compare .col{padding:var(--sp-5) var(--sp-6);display:flex;
+flex-direction:column;justify-content:center;}
+.compare .col.win{border-color:var(--accent-dim);
+box-shadow:var(--shadow),var(--glow);}
+.compare .col .v{margin-top:var(--sp-3);
+font:600 var(--fs-card)/var(--lh-tight) var(--mono);
+font-variant-numeric:tabular-nums;letter-spacing:var(--tr-neg);color:var(--text);}
+.compare .col.win .v{color:var(--accent);font-size:var(--fs-headline);
+font-weight:700;}
+.finding{color:var(--text);font:600 var(--fs-body)/var(--lh-snug) var(--sans);
+margin:0 0 var(--sp-3);padding:var(--sp-4) 0 0;max-width:74ch;
+border-top:1px solid var(--border);}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));
-gap:var(--sp-3);margin:0 0 var(--sp-2);}
-.cards a{background:var(--s-1);border:1px solid var(--line);
-border-radius:var(--r-2);padding:var(--sp-4);color:var(--fg);
-text-decoration:none;box-shadow:var(--shadow-1);display:flex;
-flex-direction:column;gap:var(--sp-2);
-transition:border-color var(--dur-2) var(--ease),
-background var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease),
-transform var(--dur-2) var(--ease);}
-.cards a:hover{border-color:var(--accent-dim);background:var(--s-2);
-box-shadow:var(--shadow-2);transform:translateY(-2px);text-decoration:none;}
-.cards a:focus-visible{box-shadow:var(--ring);border-radius:var(--r-2);}
-.cards a .t{font:600 14px/1.2 var(--sans);}
-.cards a .d{color:var(--fg-2);font-size:var(--fs-3);margin-top:0;}
-.facts{list-style:none;margin:0 0 var(--sp-2);padding:0;
-border-top:1px solid var(--line);}
-.facts li{display:grid;grid-template-columns:10ch 1fr;gap:var(--sp-4);
-align-items:baseline;padding:var(--sp-3) 0;
-border-bottom:1px solid var(--line);color:var(--fg);margin:0;
-font-size:var(--fs-5);transition:background var(--dur-1) var(--ease);}
-.facts li:hover{background:var(--s-1);}
-.facts li .n{font:600 var(--fs-5)/1 var(--mono);color:var(--accent);
+gap:var(--sp-4);margin:0 0 var(--sp-3);}
+.cards a{position:relative;padding:var(--sp-5) var(--sp-6);color:var(--text);
+text-decoration:none;display:flex;flex-direction:column;gap:var(--sp-2);
+overflow:hidden;}
+.cards a::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;
+background:linear-gradient(90deg,var(--accent-deep),var(--accent));opacity:0;
+transition:opacity var(--dur) var(--ease);}
+.cards a:hover{border-color:var(--border-hi);box-shadow:var(--shadow-lift);
+transform:translateY(-2px);text-decoration:none;}
+.cards a:hover::before{opacity:1;}
+.cards a:focus-visible{box-shadow:var(--ring);border-radius:var(--r-3);}
+.cards a .t{font:600 var(--fs-body)/1.2 var(--sans);}
+.cards a .d{color:var(--text-dim);font-size:var(--fs-table);
+line-height:var(--lh-snug);margin-top:0;}
+.facts{list-style:none;margin:0 0 var(--sp-3);padding:0;
+border-top:1px solid var(--border);}
+.facts li{display:grid;grid-template-columns:12ch 1fr;gap:var(--sp-5);
+align-items:baseline;padding:var(--sp-4) 0;
+border-bottom:1px solid var(--rule);color:var(--text-dim);margin:0;
+font-size:var(--fs-body);transition:background var(--dur) var(--ease);}
+.facts li:hover{background:var(--row-hover);}
+.facts li .n{font:600 var(--fs-body)/1 var(--mono);color:var(--accent);
 font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right;}
-.tl{margin:0;padding:0 0 0 var(--sp-6);border-left:1px solid var(--edge);
+.tl{margin:0;padding:0 0 0 var(--sp-6);border-left:1px solid var(--border);
 list-style:none;}
-.tl>li{position:relative;margin:0 0 var(--sp-5);padding:0;color:var(--fg);}
+.tl>li{position:relative;margin:0 0 var(--sp-6);padding:0;color:var(--text);}
 .tl>li:last-child{margin-bottom:0;}
 .tl>li::before{content:"";position:absolute;left:-29px;top:5px;width:9px;
 height:9px;border-radius:var(--r-pill);background:var(--bg);
-border:1px solid var(--fg-3);
-transition:background var(--dur-2) var(--ease),
-box-shadow var(--dur-2) var(--ease);}
+border:1px solid var(--text-mute);
+transition:background var(--dur) var(--ease),
+box-shadow var(--dur) var(--ease);}
 .tl>li.hit::before{background:var(--accent);border-color:var(--accent);
 box-shadow:var(--glow);}
-.tl .stage{font:600 var(--fs-1)/1 var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-1);color:var(--fg-3);margin:0 0 var(--sp-2);}
+.tl .stage{font:600 var(--fs-label)/1 var(--sans);text-transform:uppercase;
+letter-spacing:var(--tr-section);color:var(--text-mute);margin:0 0 var(--sp-3);}
 .tl dl{display:grid;grid-template-columns:max-content 1fr;
-gap:var(--sp-1) var(--sp-4);margin:0 0 var(--sp-2);}
-.tl dt{font:600 var(--fs-1)/1.5 var(--mono);text-transform:uppercase;
-letter-spacing:var(--tr-2);color:var(--fg-3);}
-.tl dd{margin:0;font:var(--fs-4)/1.5 var(--mono);
-font-variant-numeric:tabular-nums;color:var(--fg);}
-.tl .line{color:var(--fg-2);font-size:var(--fs-3);margin:0;max-width:74ch;}
-.tl table{margin:0 0 var(--sp-2);}
-.note{color:var(--fg-2);font-size:var(--fs-3);margin:var(--sp-2) 0 0;
-max-width:80ch;}
-.endpoint{color:var(--fg);font:600 var(--fs-3)/var(--lh-snug) var(--mono);
-font-variant-numeric:tabular-nums;margin:var(--sp-2) 0 0;}
-.prose p{margin:0 0 var(--sp-3);max-width:74ch;color:var(--fg);}
-.prose .step{border-left:2px solid var(--edge);padding:0 0 0 var(--sp-4);
-margin:0 0 var(--sp-4);}
-@media (max-width:820px){
+gap:var(--sp-1) var(--sp-5);margin:0 0 var(--sp-3);}
+.tl dt{font:600 var(--fs-label)/1.5 var(--sans);text-transform:uppercase;
+letter-spacing:var(--tr-label);color:var(--text-mute);}
+.tl dd{margin:0;font:var(--fs-table)/1.5 var(--mono);
+font-variant-numeric:tabular-nums;color:var(--text);}
+.tl .line{color:var(--text-dim);font-size:var(--fs-table);
+line-height:var(--lh-base);margin:0;max-width:74ch;}
+.tl table{margin:0 0 var(--sp-3);}
+.note{color:var(--text-dim);font-size:var(--fs-table);
+line-height:var(--lh-base);margin:var(--sp-3) 0 0;max-width:80ch;}
+.endpoint{color:var(--text);font:600 var(--fs-table)/var(--lh-snug) var(--mono);
+font-variant-numeric:tabular-nums;margin:var(--sp-3) 0 0;}
+.prose p{margin:0 0 var(--sp-4);max-width:74ch;color:var(--text-dim);}
+.prose .step{border-left:2px solid var(--border-hi);padding:0 0 0 var(--sp-5);
+margin:0 0 var(--sp-5);}
+@media (max-width:900px){
 .headline{grid-template-columns:1fr;}
 .versus{grid-template-columns:1fr;}
 .versus .gap{justify-content:flex-start;}
+.hero-row{grid-template-columns:1fr;}
+}
+@media (max-width:600px){
+:root{--gutter:16px;--fs-title:28px;--fs-headline:30px;}
+.brand .full{display:none;}
 }
 @media (prefers-reduced-motion:reduce){
 *{animation:none !important;transition:none !important;}
@@ -362,12 +424,64 @@ margin:0 0 var(--sp-4);}
 """
 
 
-def document(title: str, body: str) -> str:
+# The two bar gradients, defined once per document and referenced from the
+# stylesheet by `fill:url(#g-accent)`.
+#
+# WHY THIS MARKUP EXISTS AT ALL. The bars on the landing page and the scoreboard
+# are SVG `<rect>` elements, and `fill` takes a paint value - a colour or a
+# reference to a paint server. It does not take a CSS gradient, so there is no
+# arrangement of the stylesheet alone that puts a gradient on those bars. This
+# is the paint server; the stylesheet still decides which bar gets which.
+_BAR_GRADIENTS = (
+    '<svg class="defs" aria-hidden="true" focusable="false"><defs>'
+    '<linearGradient id="g-accent" x1="0" y1="0" x2="1" y2="0">'
+    '<stop offset="0" stop-color="#D19A1F"/><stop offset="1" stop-color="#F0B429"/>'
+    "</linearGradient>"
+    '<linearGradient id="g-grey" x1="0" y1="0" x2="1" y2="0">'
+    '<stop offset="0" stop-color="#444D5C"/><stop offset="1" stop-color="#586374"/>'
+    "</linearGradient>"
+    "</defs></svg>"
+)
+
+
+def run_stamp(seed: int | None) -> str:
+    """The provenance pill for the top bar: which run these figures came from.
+
+    THE DIGEST IS ONLY SHOWN FOR THE RUN IT DESCRIBES. `JUDGED_DIGEST` is the
+    hash of the judged seed's output, and `python -m arc.console.build` defaults
+    to the DEVELOP seed - so stamping it unconditionally would put a seed-3
+    claim on the header of every page of a seed-1 console, on all five screens
+    at once. A seed the reader can see is worth more than a hash they cannot
+    check, so a non-judged run says which seed it was and stops there.
+    """
+    if seed is None:
+        return ""
+    if seed == JUDGED_SEED:
+        return f"seed {seed} &middot; {escape(JUDGED_DIGEST[:8])}"
+    return f"seed {seed}"
+
+
+def document(title: str, body: str, *, stamp: str = "") -> str:
+    """One screen, as a self-contained document.
+
+    THE TOP BAR IS ON EVERY SCREEN AND CARRIES THE PROVENANCE. Four screens that
+    each open from disk have no shared navigation and no address bar worth
+    reading, so without it a reader three clicks in has nothing telling them
+    which run they are looking at. Putting the seed and the digest in a fixed
+    position makes the reproducibility claim answerable at a glance instead of
+    only on the landing page.
+    """
+    pill = f'<div class="stamp">{stamp}</div>' if stamp else ""
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{escape(title)}</title><style>{_STYLE}</style></head>"
-        f"<body><main>{body}</main></body></html>"
+        f"<body>{_BAR_GRADIENTS}"
+        '<header class="topbar"><div class="topbar-in">'
+        '<div class="brand"><span class="mark">ARC</span>'
+        '<span class="full">autonomous revenue continuity</span></div>'
+        f"{pill}</div></header>"
+        f"<main>{body}</main></body></html>"
     )
 
 
@@ -592,7 +706,7 @@ class BatchView:
             f"{self.cohort_blind:,} claims were diagnosed without cohort power and are "
             f"counted as a known blind spot rather than as a clean NORMAL.</p>"
         )
-        return document(f"ARC batch - seed {self.seed}", body)
+        return document(f"ARC batch - seed {self.seed}", body, stamp=run_stamp(self.seed))
 
 
 # ---------------------------------------------------------------------------
@@ -616,6 +730,9 @@ class FirewallView:
     counters: Sequence[RuleCounter]
     registry: RuleRegistry
     declined: int = 0
+    # Carried for the top bar's provenance pill only. Optional, so a test that
+    # builds a funnel to assert on the funnel does not have to name a run.
+    seed: int | None = None
 
     def __post_init__(self) -> None:
         accounted = self.blocked + self.deferred + self.declined + self.executed
@@ -755,7 +872,7 @@ class FirewallView:
             "<table><tr><th>rule</th><th>force</th><th class='n'>fired</th>"
             "<th>verdict</th></tr>" + rows + "</table>"
         )
-        rendered = document("ARC compliance firewall", body)
+        rendered = document("ARC compliance firewall", body, stamp=run_stamp(self.seed))
         # THE HONESTY AUDIT, ON THE WAY OUT. Checked against what was actually
         # rendered rather than against the model that produced it.
         assert_no_overstated_force(rendered, self.registry)
@@ -770,6 +887,35 @@ _SPEND_DENOMINATOR = (
     "Spend is marginal channel cost only: messaging, retries and voice minutes. "
     "Compute, human-tier time and amortised build are not in the denominator."
 )
+
+
+def _harm_tone(
+    rails: Mapping[str, object],
+    baseline: Mapping[str, object] | None,
+    key: str,
+) -> str:
+    """Colour a guardrail cell green or red AGAINST THE COMPARATOR, or not at all.
+
+    THE COMPARISON IS COMPUTED, NEVER ASSERTED BY THE STYLESHEET. A rule that
+    painted ARC's complaint rate green would be making a claim about the data
+    from inside the CSS, and it would go on making it on the run where ARC
+    loses. So the arithmetic happens here, against the same comparator the
+    headline is stated against, and a cell that is not better or worse than the
+    comparator gets no colour at all.
+
+    The comparator's own row is never coloured - an arm cannot beat itself, and
+    a green baseline would read as an endorsement of the arm this whole
+    scoreboard exists to beat.
+    """
+    if baseline is None or rails is baseline:
+        return ""
+    observed = float(rails[key])  # type: ignore[arg-type]
+    reference = float(baseline[key])  # type: ignore[arg-type]
+    if observed < reference:
+        return " good"
+    if observed > reference:
+        return " bad"
+    return ""
 
 
 def _multiple(numerator: float, denominator: float) -> int:
@@ -925,17 +1071,24 @@ class ScoreboardView:
     def render(self) -> str:
         payload = self.payload()
         arms = payload["arms"]
+        comparator = str(payload["comparator"])
+        baseline = next(
+            (a["guardrails"] for a in arms if a["arm"] == comparator),  # type: ignore[union-attr,index]
+            None,
+        )
         rows = ""
         for arm in arms:  # type: ignore[union-attr]
             rails = arm["guardrails"]
             rows += (
-                "<tr>"
+                f"<tr class='arm arm-{escape(str(arm['arm']))}'>"
                 f"<td>{escape(arm['arm'])}</td>"
                 f"<td class='n'>{format_inr(Paise(arm['recovered_paise']))}</td>"
                 f"<td class='n'>{format_inr(Paise(arm['incremental_paise']))}</td>"
                 f"<td class='n'>{format_inr(Paise(arm['spend_paise']))}</td>"
-                f"<td class='n'>{rails['complaint_rate_per_1000']:.2f}</td>"
-                f"<td class='n'>{rails['opt_out_rate_per_1000']:.2f}</td>"
+                f"<td class='n{_harm_tone(rails, baseline, 'complaint_rate_per_1000')}'>"
+                f"{rails['complaint_rate_per_1000']:.2f}</td>"
+                f"<td class='n{_harm_tone(rails, baseline, 'opt_out_rate_per_1000')}'>"
+                f"{rails['opt_out_rate_per_1000']:.2f}</td>"
                 f"<td class='n'>{rails['voluntary_cancel_rate_treated']:.3f}</td>"
                 f"<td class='n'>{rails['cost_per_rupee_collected']:.3f}</td>"
                 f"<td class='n'>{rails['promise_kept_rate']:.2f}</td>"
@@ -987,7 +1140,11 @@ class ScoreboardView:
             "seeing the result, which is the thing the three-seed discipline exists "
             "to prevent.</p>"
         )
-        return document("ARC scoreboard", body)
+        return document(
+            "ARC scoreboard",
+            body,
+            stamp=run_stamp(int(payload["seed"])),  # type: ignore[call-overload]
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1050,6 +1207,7 @@ class ReplayView:
     claim_id: str
     subject_token: str
     stages: Sequence[Stage] = ()
+    seed: int | None = None
 
     def text(self) -> str:
         return "\n\n".join(self.paragraphs)
@@ -1065,7 +1223,7 @@ class ReplayView:
             f"end to end, in the order it happened</p>"
             f'<ol class="tl">{stages}</ol>'
         )
-        return document(f"ARC replay - {self.claim_id[:8]}", body)
+        return document(f"ARC replay - {self.claim_id[:8]}", body, stamp=run_stamp(self.seed))
 
 
 LAYER_ORDER: tuple[CauseLayer, ...] = (

@@ -19,7 +19,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -192,7 +192,7 @@ def _index(data: ConsoleData) -> str:
     way of quietly not saying so.
     """
     from arc.console.badges import honest_mix
-    from arc.console.screens import _SPEND_DENOMINATOR, document
+    from arc.console.screens import _SPEND_DENOMINATOR, document, run_stamp
 
     payload = data.scoreboard.payload()
     arms = {str(a["arm"]): a for a in payload["arms"]}  # type: ignore[union-attr]
@@ -250,10 +250,19 @@ def _index(data: ConsoleData) -> str:
             f"and {mix['stricter_than_binding_minimum']} are stricter than the "
             "binding minimum",
         ),
+        # The digest describes the JUDGED run and no other. This module defaults
+        # to the develop seed, so a run that is not the judged one says which
+        # seed it was instead of quoting a hash of somebody else's output. The
+        # top bar resolves the same way, so the two can never disagree.
         (
-            JUDGED_DIGEST[:8],
+            JUDGED_DIGEST[:8]
+            if int(payload["seed"]) == JUDGED_SEED  # type: ignore[call-overload]
+            else f"seed {payload['seed']}",
             "the digest of this run, identical across three consecutive runs of "
-            "<code>make demo SEED=3</code>",
+            "<code>make demo SEED=3</code>"
+            if int(payload["seed"]) == JUDGED_SEED  # type: ignore[call-overload]
+            else "this console was not built from the judged seed, so the judged "
+            "digest is not quoted here",
         ),
     )
 
@@ -297,7 +306,7 @@ def _index(data: ConsoleData) -> str:
         "<h2>The screens</h2>"
         f'<div class="cards">{cards}</div>'
     )
-    return document("ARC console", body)
+    return document("ARC console", body, stamp=run_stamp(int(payload["seed"])))
 
 
 # ---------------------------------------------------------------------------
@@ -404,6 +413,7 @@ def assemble(result: HarnessResult, *, registry: RuleRegistry, seed: int) -> Con
         executed=funnel["executed"],
         counters=_rule_counters(arc_run.logs, registry),
         registry=registry,
+        seed=seed,
     )
 
     scoreboard = ScoreboardView(
@@ -416,7 +426,7 @@ def assemble(result: HarnessResult, *, registry: RuleRegistry, seed: int) -> Con
         decay=_decay(result),
     )
 
-    replay = narrate(_pick_trace(result, registry, at))
+    replay = replace(narrate(_pick_trace(result, registry, at)), seed=seed)
     return ConsoleData(
         batch=batch,
         firewall=firewall,
