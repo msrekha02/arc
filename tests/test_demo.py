@@ -23,7 +23,16 @@ from pathlib import Path
 import pytest
 from arc.console.build import build
 from arc.demo.attacks import ATTACKS, run_attack
-from arc.demo.harness import adversarial_lines, beats, digest, headline_numbers, script
+from arc.demo.harness import (
+    JUDGED_DEMO_CYCLES,
+    JUDGED_DEMO_SIZE,
+    JUDGED_DIGEST,
+    adversarial_lines,
+    beats,
+    digest,
+    headline_numbers,
+    script,
+)
 from arc.proving_ground.arms import Arm
 from arc.simulator.seeds import JUDGED_SEED
 
@@ -88,6 +97,51 @@ def test_three_consecutive_runs_are_byte_identical() -> None:
     # cannot pass.
     assert "THE SCOREBOARD" in first
     assert re.search(r"digest [0-9a-f]{64}", first), "no digest was printed"
+
+
+def test_the_judged_digest_is_pinned() -> None:
+    """`make demo SEED=3` reproduces the digest committed in the source.
+
+    WHY THIS GATE EXISTS. The other two digest tests prove the hash is stable
+    within a run and sensitive to a changed figure. Neither pins the VALUE, and
+    an unpinned value is how the number in df47013's commit message came to
+    describe a run no committed tree ever produced: a batch-diagnosis fix in
+    that same commit moved `batch.issuer`, which is a digest input, and prose
+    does not fail a build.
+
+    WHAT CAN LEGITIMATELY MOVE IT. Exactly what `headline_numbers` flattens -
+    `HEADLINE_KEYS` per arm, recovered, incremental, spend and prevented, plus
+    every guardrail on every arm, plus the batch counters: claims, subjects,
+    the four diagnosis layers, suppressed, and cohort_blind. Both live in
+    `arc/demo/harness.py`, `HEADLINE_KEYS` through `digest`. So the allocator,
+    the response model, the simulator and the batch diagnosis can all move this
+    number and are allowed to. Styling, wording, layout and the console
+    stylesheet cannot: the digest is taken over figures, never over rendered
+    HTML.
+
+    IF THIS FAILS, do not edit the constant until you can name the figure that
+    moved and say why it should have. Updating it to make the suite green is
+    the failure mode this test was written against.
+    """
+    run = _run_cli(
+        "--seed",
+        str(JUDGED_SEED),
+        "--size",
+        str(JUDGED_DEMO_SIZE),
+        "--cycles",
+        str(JUDGED_DEMO_CYCLES),
+    )
+    assert run.returncode == 0, f"the judged demo failed:\n{run.stderr[-2500:]}"
+
+    printed = re.search(r"digest ([0-9a-f]{64})", run.stdout)
+    assert printed, "the judged demo printed no digest"
+    assert printed.group(1) == JUDGED_DIGEST, (
+        f"`make demo SEED=3` produced {printed.group(1)[:8]}, but the pinned "
+        f"digest is {JUDGED_DIGEST[:8]}. One of the figures in headline_numbers "
+        f"moved - per-arm recovery, spend, prevention or a guardrail, or one of "
+        f"the batch counters. Find which, decide whether it should have moved, "
+        f"and only then update JUDGED_DIGEST in arc/demo/harness.py"
+    )
 
 
 def test_the_digest_covers_the_numbers_the_demo_shows(data) -> None:

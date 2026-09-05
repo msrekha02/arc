@@ -52,7 +52,7 @@ from uuid import UUID
 import numpy as np
 
 import arc.simulator.response_model as rm
-from arc.allocator.budgets import BudgetKey, Budgets, cost_of
+from arc.allocator.budgets import CONTACT_ACTIONS, BudgetKey, Budgets, cost_of
 from arc.core.ids import deterministic_uuid, subject_token
 from arc.core.money import Paise, paise
 from arc.core.time_authority import TimezoneBasis, TzBasisKind
@@ -103,7 +103,7 @@ from arc.proving_ground.policies import ArmPolicy, ClaimCase, SubjectCase, build
 from arc.sentinel.code_map import code_lookup
 from arc.sentinel.cohort import CohortHistory
 from arc.simulator.seeds import EPOCH, Stream, rng
-from arc.simulator.world import World
+from arc.simulator.world import World, sleeping_dogs
 
 # Pepper for the harness's own token derivation. A literal, because the batch
 # must be byte-identical across runs and a random pepper would move every
@@ -226,6 +226,17 @@ class HarnessResult:
     cases: tuple[SubjectCase, ...] = ()
     at0: datetime = EPOCH
     world: World | None = None
+    # GROUND TRUTH, COUNTED HERE AND CARRIED OUT AS INTEGERS.
+    #
+    # `sleeping_dogs` reads the simulator's counterfactuals, and only the
+    # simulator and this harness may do that - `test_import_bans` sweeps every
+    # other package for it. The console needs the number and is not allowed to
+    # ask for it, which is the correct arrangement: a presentation layer that
+    # can reach ground truth can render a figure the running system could never
+    # have known. So the question is asked once, on the inside, and what leaves
+    # is a count.
+    sleeping_dogs_planted: int = 0
+    sleeping_dogs_contacted: Mapping[Arm, int] = field(default_factory=dict)
 
     def arc(self) -> ArmRun:
         return self.runs[Arm.ARC]
@@ -545,6 +556,28 @@ def run_arm(
                 draw=draw,
                 realized=realized,
                 pi_exec=pi_exec,
+                # THE ALLOCATOR'S OWN MASS FOR THE SAMPLED BRANCH, indexed and
+                # never defaulted.
+                #
+                # WHAT WAS HERE BEFORE. `pi_exec.get(intended, pi_realized)`.
+                # `pi_exec` is the composed EXECUTION distribution, so a refused
+                # branch is absent from it entirely and the default handed back
+                # `pi_realized` instead. Every vetoed row therefore logged the
+                # realized propensity twice under two different names, and the
+                # replay screen printed "sampled whatsapp_utility at 0.771,
+                # realized do_nothing at 0.771" - two numbers that cannot both
+                # be right, from one row, with nothing failing.
+                #
+                # The estimate was never affected, because it divides by
+                # `pi_behaviour` which reads `pi_realized`. That is luck rather
+                # than design: a silent default on a propensity field is one
+                # rename away from being read by the arithmetic.
+                #
+                # So this indexes. `draw.intended` is drawn FROM `pi_alloc`, so
+                # a missing key is not a state the sampler can produce, and a
+                # KeyError here is the correct outcome for a bug that would
+                # otherwise be invisible.
+                pi_intended=float(draw.pi_alloc[draw.intended]),
                 pi_realized=pi_realized,
                 blocking=tuple(blocking),
                 cycle=cycle,
@@ -641,6 +674,7 @@ def _apply(
     draw: object,
     realized: DecisionKey,
     pi_exec: Mapping[DecisionKey, float],
+    pi_intended: float,
     pi_realized: float,
     blocking: tuple[str, ...],
     cycle: int,
@@ -706,14 +740,18 @@ def _apply(
     if outcome.kind in CLOSING_OUTCOMES:
         state.closed = True
 
-    intended = getattr(draw, "intended", realized)
+    # NO FALLBACK ON EITHER OF THESE. `draw.intended` is what the allocator
+    # sampled and it always exists; substituting `realized` for it would make a
+    # vetoed row look like a clean one. See `pi_intended` below for why the
+    # same applies to the probability.
+    intended = draw.intended  # type: ignore[attr-defined]
     run.logs.append(
         LoggedDecision(
             subject_token=case.subject_token,
             cycle=cycle,
             stratum=stratum.key if stratum is not None else "",
             intended_key=intended,
-            pi_intended=float(pi_exec.get(intended, pi_realized)),
+            pi_intended=pi_intended,
             realized_key=realized,
             pi_realized=pi_realized,
             veto_occurred=intended != realized,
@@ -814,6 +852,7 @@ def run_all(
             record_truth=policy.arm is Arm.ARC,
         )
 
+    planted, reached = _sleeping_dog_reach(base, cases, runs, at0)
     return HarnessResult(
         runs=runs,
         seed=seed,
@@ -824,7 +863,50 @@ def run_all(
         cases=tuple(cases),
         at0=at0,
         world=base,
+        sleeping_dogs_planted=planted,
+        sleeping_dogs_contacted=reached,
     )
+
+
+def _sleeping_dog_reach(
+    world: World,
+    cases: Sequence[SubjectCase],
+    runs: Mapping[Arm, ArmRun],
+    at: datetime,
+) -> tuple[int, dict[Arm, int]]:
+    """How many planted sleeping dogs each arm contacted.
+
+    A PLANTED SLEEPING DOG IS GROUND TRUTH, not the forecaster's opinion of
+    one. `sleeping_dogs` returns the accounts whose counterfactual under every
+    digital nudge is worse than doing nothing, so "how many did we contact"
+    is a question about behaviour rather than about the model agreeing with
+    itself.
+
+    CONTACT MEANS ANY CONTACT. The cohort is defined over digital nudges, but
+    an arm can reach the same account by voice or by a human handoff, and the
+    unconstrained arm does exactly that. Counting only nudges reports it at
+    zero while it contacts most of them.
+
+    COUNTED IN SUBJECTS, because contact is a subject-level act and a subject
+    contacted twice is not two harms of the same kind.
+    """
+    planted_accounts = set(sleeping_dogs(world, at))
+    planted_subjects = {
+        case.subject_token
+        for case in cases
+        if {claim.account_id for claim in case.claims} & planted_accounts
+    }
+    reached = {
+        arm: len(
+            {
+                row.subject_token
+                for row in run.logs
+                if row.subject_token in planted_subjects and row.realized_key[1] in CONTACT_ACTIONS
+            }
+        )
+        for arm, run in runs.items()
+    }
+    return len(planted_subjects), reached
 
 
 DENOMINATOR = (

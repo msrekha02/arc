@@ -15,3 +15,7 @@ node_modules/
 
 # artefacts
 *.log
+
+# local presentation aids, not part of the delivered system
+demo.md
+CLAUDE.md

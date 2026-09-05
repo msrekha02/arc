@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+from arc.console.badges import escape
 from arc.console.replay import (
     ConsideredAction,
     RuleFiring,
@@ -35,13 +37,21 @@ from arc.console.screens import (
     ReplayView,
     RuleCounter,
     ScoreboardView,
+    _tile,
 )
-from arc.core.money import Paise, paise
+from arc.core.money import Paise, format_inr, paise
+from arc.core.reproducibility import JUDGED_DIGEST
 from arc.core.types import ActionType, CauseLayer, ClaimState
 from arc.gate.evaluator import Gate
 from arc.gate.lattice import Verdict
 from arc.gate.registry import RuleRegistry, load_registry
 from arc.proving_ground.arms import Arm
+from arc.proving_ground.composed import ADMISSION_RULE_ID
+from arc.proving_ground.dr_estimator import (
+    dr_estimate,
+    fit_outcome_model,
+    on_policy_target,
+)
 from arc.proving_ground.harness import HarnessResult, build_scoreboard, run_all
 from arc.proving_ground.policies import SharedUplift
 from arc.sentinel.diagnose import DiagnosisContext, diagnose
@@ -74,25 +84,218 @@ class ConsoleData:
             "firewall.html": self.firewall.render(),
             "scoreboard.html": self.scoreboard.render(),
             "replay.html": self.replay.render(),
-            "index.html": _index(),
+            "index.html": _index(self),
         }
 
 
-def _index() -> str:
-    from arc.console.screens import document
+_CARDS: tuple[tuple[str, str, str], ...] = (
+    (
+        "batch.html",
+        "Batch",
+        "Counters, the diagnosis split, and the claims a detected outage took "
+        "off the contact path entirely.",
+    ),
+    (
+        "firewall.html",
+        "Compliance firewall",
+        "Proposed to executed with every category counted, per-rule fired "
+        "counts, and the honest mix of what is law and what is our own policy.",
+    ),
+    (
+        "scoreboard.html",
+        "Scoreboard",
+        "Five arms, guardrails beside the money, and the estimator's own error "
+        "against simulator ground truth.",
+    ),
+    (
+        "replay.html",
+        "Replay",
+        "One decision end to end: diagnosis, options priced, the verdict, the "
+        "propensity it was drawn with, and what happened.",
+    ),
+)
+
+
+def _sleeping_dog_contacts(result: HarnessResult) -> tuple[int, int, int]:
+    """The planted count and what two arms contacted, as counted by the harness.
+
+    THE CONSOLE MAY NOT ASK THIS QUESTION ITSELF. `sleeping_dogs` reads the
+    simulator's counterfactuals, and `test_import_bans` sweeps every package
+    outside the simulator and the proving ground for exactly that call. The
+    ban is right: a screen that can reach ground truth can render a figure the
+    running system could never have known, which is the circularity the frozen
+    simulator exists to prevent. So the harness counts it and this reads the
+    integers it carried out.
+    """
+    reached = result.sleeping_dogs_contacted
+    return (
+        result.sleeping_dogs_planted,
+        int(reached.get(Arm.ARC, 0)),
+        int(reached.get(Arm.NAIVE_DUNNING, 0)),
+    )
+
+
+def _hero_bars(rows: Sequence[tuple[str, int, bool]]) -> str:
+    """Three totals as bars on one scale, so the reversal is a picture.
+
+    THE FINDING IS A SHAPE, NOT A SENTENCE. The industry default recovering
+    less than the null arm is the most surprising measured result in the
+    system, and as three numbers in a row it reads as three numbers in a row.
+    On a shared zero-based axis the naive bar is visibly shorter than the arm
+    that did nothing at all, and nobody needs the caption to see it.
+
+    ORDER IS ARC, NULL, NAIVE - the order that makes the shortfall adjacent to
+    the thing it falls short of.
+    """
+    if not rows:
+        return ""
+    top = max(value for _, value, _ in rows) or 1
+    width, row_h, gap, label_w, value_w = 760.0, 34.0, 14.0, 150.0, 150.0
+    span = width - label_w - value_w
+    height = len(rows) * (row_h + gap) - gap
+
+    body = ""
+    for index, (name, value, accent) in enumerate(rows):
+        y = index * (row_h + gap)
+        mid = y + row_h / 2 + 5
+        css = "hbar win" if accent else "hbar"
+        body += (
+            f'<g class="{css}">'
+            f'<text class="lab" x="0" y="{mid:.1f}">{escape(name)}</text>'
+            f'<rect class="track" x="{label_w}" y="{y:.1f}" width="{span:.1f}" '
+            f'height="{row_h}" rx="3"/>'
+            f'<rect class="fill" x="{label_w}" y="{y:.1f}" '
+            f'width="{span * value / top:.1f}" height="{row_h}" rx="3"/>'
+            f'<text class="val" x="{width:.0f}" y="{mid:.1f}" text-anchor="end">'
+            f"{escape(format_inr(Paise(value)))}</text>"
+            "</g>"
+        )
+    return (
+        f'<svg class="hero" viewBox="0 0 {width:.0f} {height:.0f}" '
+        f'role="img" aria-label="recovered by arm">{body}</svg>'
+    )
+
+
+def _index(data: ConsoleData) -> str:
+    """The landing screen.
+
+    WHY THIS IS NOT A TABLE OF CONTENTS. It is the first thing a reader opens,
+    and a heading with four links spends that on navigation. The graded number
+    goes here, with its interval and its guardrails, and then four facts that
+    can be read from across a room. The links are still here; they are just no
+    longer the whole page.
+
+    THE STRUCTURAL RULE HOLDS ON THIS SCREEN TOO. No recovery figure appears
+    without the guardrails that qualify it, which is the same refusal
+    `Scoreboard.to_dict` enforces - a headline that generated complaints and
+    opt-outs is not a headline, and splitting them across screens would be a
+    way of quietly not saying so.
+    """
+    from arc.console.badges import honest_mix
+    from arc.console.screens import _SPEND_DENOMINATOR, document
+
+    payload = data.scoreboard.payload()
+    arms = {str(a["arm"]): a for a in payload["arms"]}  # type: ignore[union-attr]
+    arc = arms["arc"]
+    rails = arc["guardrails"]  # type: ignore[index]
+    interval = arc.get("ci_95_paise")  # type: ignore[union-attr]
+    ci = (
+        f"bootstrap 95% CI on recovered rupees {format_inr(Paise(int(interval[0])))} "
+        f"to {format_inr(Paise(int(interval[1])))}"
+        if interval
+        else "no interval computed"
+    )
+
+    mix = honest_mix(data.firewall.registry)
+    batch = data.batch
+    naive = arms[str(payload["comparator"])]
+    null = arms["null"]
+
+    # THE COMPARISON LEADS, NOT THE RATIO. Three totals a reader can check
+    # against each other without being told how to read them, and the finding
+    # underneath is the one measured result that surprises people. A ratio
+    # invites the denominator question before anybody has agreed there is
+    # something worth measuring; three rupee figures do not.
+    bars = _hero_bars(
+        [
+            ("arc", int(arc["recovered_paise"]), True),  # type: ignore[index]
+            ("doing nothing", int(null["recovered_paise"]), False),  # type: ignore[index]
+            (
+                str(payload["comparator"]).replace("_", " "),
+                int(naive["recovered_paise"]),  # type: ignore[index]
+                False,
+            ),
+        ]
+    )
+    planted, dogs_contacted, dogs_naive = _sleeping_dog_contacts(data.result)
+
+    facts = (
+        (
+            f"{batch.claims:,}",
+            f"claims across {batch.subjects:,} subjects, {format_inr(batch.at_risk_paise)} at risk",
+        ),
+        (
+            f"{batch.suppressed_by_outage:,}",
+            "claims suppressed by a detected issuer outage, contacted zero times",
+        ),
+        (
+            f"{dogs_contacted} of {planted}",
+            f"planted sleeping dogs were contacted, against {dogs_naive} by the "
+            "industry default. Measured on the simulator's ground truth, not on "
+            "the model agreeing with itself",
+        ),
+        (
+            f"{mix['statutory']} of {mix['total']}",
+            f"rules are statutory; {mix['policy_choice']} are our own policy choice, "
+            f"and {mix['stricter_than_binding_minimum']} are stricter than the "
+            "binding minimum",
+        ),
+        (
+            JUDGED_DIGEST[:8],
+            "the digest of this run, identical across three consecutive runs of "
+            "<code>make demo SEED=3</code>",
+        ),
+    )
+
+    cards = "".join(
+        f'<a href="{href}"><div class="t">{title}</div><div class="d">{blurb}</div></a>'
+        for href, title, blurb in _CARDS
+    )
 
     body = (
-        "<h1>ARC console</h1>"
-        '<p class="sub">Four screens, rendered from a real run.</p>'
-        "<ul>"
-        '<li><a href="batch.html">Batch</a> &mdash; counters, diagnosis split, '
-        "claims suppressed by a detected outage</li>"
-        '<li><a href="firewall.html">Compliance firewall</a> &mdash; proposed to '
-        "executed, per-rule counters, the honest mix</li>"
-        '<li><a href="scoreboard.html">Scoreboard</a> &mdash; five arms, guardrails '
-        "beside the money, estimator error against ground truth</li>"
-        '<li><a href="replay.html">Replay</a> &mdash; one claim, explained</li>'
-        "</ul>"
+        "<h1>ARC &mdash; autonomous revenue continuity</h1>"
+        f'<p class="sub">Seed {payload["seed"]}, {payload["cycles"]} cycles, '
+        "rendered from a real run. Every figure below is reproduced by "
+        "<code>make demo SEED=3</code>.</p>"
+        "<h2>Recovered in four cycles</h2>"
+        '<div class="hero-row">'
+        f"<div>{bars}"
+        '<p class="finding">The industry default recovered less than doing nothing '
+        "on this population.</p></div>"
+        '<div class="hero-side">'
+        + _tile(
+            "incremental per rupee spent",
+            f"{float(arc['incremental_per_rupee_spent']):.2f}x",  # type: ignore[index]
+            point=True,
+        )
+        + f'<p class="note">{format_inr(Paise(int(arc["incremental_paise"])))} '  # type: ignore[index]
+        + f"incremental against naive dunning &mdash; {ci}. {_SPEND_DENOMINATOR}</p>"
+        + "</div></div>"
+        "<h2>Guardrails</h2>"
+        '<div class="tiles">'
+        + _tile("complaints /1k", f"{rails['complaint_rate_per_1000']:.2f}")  # type: ignore[index]
+        + _tile("opt-outs /1k", f"{rails['opt_out_rate_per_1000']:.2f}")  # type: ignore[index]
+        + _tile("cost per rupee", f"{rails['cost_per_rupee_collected']:.3f}")  # type: ignore[index]
+        + "</div>"
+        '<p class="note">The guardrails sit beside the money because the money does '
+        "not exist without them. Recovery that generates complaints and opt-outs is "
+        "not a win, and this console refuses to render one without the other.</p>"
+        "<h2>What the run shows</h2>"
+        '<ul class="facts">'
+        + "".join(f'<li><span class="n">{n}</span><span>{what}</span></li>' for n, what in facts)
+        + "</ul>"
+        "<h2>The screens</h2>"
+        f'<div class="cards">{cards}</div>'
     )
     return document("ARC console", body)
 
@@ -192,17 +395,21 @@ def assemble(result: HarnessResult, *, registry: RuleRegistry, seed: int) -> Con
         cohort_blind=split.blind,
     )
 
+    funnel = _funnel(arc_run.logs, registry)
     firewall = FirewallView(
         proposed=len(arc_run.logs),
-        blocked=sum(1 for row in arc_run.logs if row.veto_occurred),
-        deferred=0,
-        executed=sum(1 for row in arc_run.logs if row.realized_key[1] is not ActionType.DO_NOTHING),
-        counters=_rule_counters(arc_run.logs),
+        blocked=funnel["blocked"],
+        deferred=funnel["deferred"],
+        declined=funnel["declined"],
+        executed=funnel["executed"],
+        counters=_rule_counters(arc_run.logs, registry),
         registry=registry,
     )
 
     scoreboard = ScoreboardView(
-        scoreboard=build_scoreboard(result, dr_relative_error=DR_ERROR_DEVELOP),
+        scoreboard=build_scoreboard(
+            result, dr_relative_error=DR_ERROR_DEVELOP, ci=_recovered_interval(result, seed)
+        ),
         dr_error_develop=DR_ERROR_DEVELOP,
         dr_error_judged=DR_ERROR_JUDGED,
         judged_seed=JUDGED_SEED,
@@ -219,14 +426,123 @@ def assemble(result: HarnessResult, *, registry: RuleRegistry, seed: int) -> Con
     )
 
 
-def _rule_counters(logs: Sequence[object]) -> list[RuleCounter]:
+def _known_ids(registry: RuleRegistry) -> frozenset[str]:
+    """The registry's rule ids as a set.
+
+    WHY THIS EXISTS AT ALL. `RuleRegistry` defines `__len__`, `__iter__` and
+    `__getitem__` but no `__contains__`, so `rule_id in registry` falls back to
+    iteration and compares a `str` against `Rule` objects. That is False for
+    EVERY id, including real ones. A membership test written the obvious way
+    silently discards every rule it is handed, which is exactly the bug that
+    made the replay screen announce a BLOCK and then report that nothing
+    objected. Ask for the ids and test against those.
+    """
+    return frozenset(rule.id for rule in registry)
+
+
+def _refusal_verdict(rule_ids: Sequence[str], registry: RuleRegistry) -> Verdict:
+    """What a refusal actually was, reconstructed from who refused.
+
+    THE LOG DOES NOT STORE A VERDICT. A decision row carries `veto_occurred`,
+    a boolean, and the ids that caused it - which flattens DEFER, BLOCK and
+    BLOCK_PERMANENT into one bit. The verdict is recoverable because each
+    refuser declares its own: `ALLOC-ADMISSION` is the allocator's in-cycle
+    admission step and always defers, and every Gate rule declares
+    `on_violation` in the registry. Strongest verdict wins, because a branch
+    refused by both a cooldown and a consent rule was blocked, not deferred.
+    """
+    order = (Verdict.DEFER, Verdict.BLOCK, Verdict.BLOCK_PERMANENT)
+    worst = Verdict.ALLOW
+    known = _known_ids(registry)
+    for rule_id in rule_ids:
+        if rule_id == ADMISSION_RULE_ID:
+            found = Verdict.DEFER
+        elif rule_id in known:
+            found = registry[rule_id].on_violation
+        else:
+            continue
+        if found in order and (worst is Verdict.ALLOW or order.index(found) > order.index(worst)):
+            worst = found
+    return worst
+
+
+def _funnel(logs: Sequence[object], registry: RuleRegistry) -> dict[str, int]:
+    """proposed = blocked + deferred + declined + executed, every term counted.
+
+    `declined` is the category the screen used to have no name for: a branch
+    nobody refused, where the policy itself sampled `do_nothing`. Without it
+    the funnel does not add up and the missing rows look like a rounding error
+    rather than the deliberate choices they are.
+    """
+    blocked = deferred = declined = executed = 0
+    for row in logs:
+        ids = tuple(getattr(row, "blocking_rule_ids", ()) or ())
+        verdict = _refusal_verdict(ids, registry) if ids else Verdict.ALLOW
+        if verdict is Verdict.DEFER:
+            deferred += 1
+        elif verdict in (Verdict.BLOCK, Verdict.BLOCK_PERMANENT):
+            blocked += 1
+        elif row.realized_key[1] is ActionType.DO_NOTHING:  # type: ignore[attr-defined]
+            declined += 1
+        else:
+            executed += 1
+    return {
+        "blocked": blocked,
+        "deferred": deferred,
+        "declined": declined,
+        "executed": executed,
+    }
+
+
+def _recovered_interval(result: HarnessResult, seed: int) -> tuple[Paise, Paise]:
+    """ARC's recovered total, with the subject-clustered bootstrap 95% interval.
+
+    WHY THE SCREEN HAD NO INTERVAL. `build_scoreboard` has always accepted a
+    `ci` argument and no caller ever passed one, so every scoreboard rendered
+    a point estimate with nothing saying whether it was real. A headline
+    without an interval invites the reader to treat it as exact.
+
+    WHAT THE INTERVAL IS ON. `dr_estimate` works per DECISION - the estimand
+    is paise per logged decision - and its bootstrap resamples SUBJECTS as
+    clusters, which is where GI-8's unit of independence belongs. Multiplying
+    the endpoints by the row count rescales that interval to a batch total,
+    which is a change of units and not a change of claim.
+
+    WHAT IT IS NOT ON. The comparator's recovery and ARC's spend are treated
+    here as the observed constants they are, so an interval quoted on a ratio
+    built from them would understate the uncertainty. The interval is
+    therefore reported against recovered rupees, which is what the bootstrap
+    actually covers, and the screen says so.
+
+    The generator is seeded from the run's own seed, so the interval is as
+    reproducible as everything else on the screen.
+    """
+    logs = result.runs[Arm.ARC].logs
+    estimate = dr_estimate(
+        logs,
+        fit_outcome_model(logs),
+        on_policy_target,
+        rng=np.random.default_rng(seed),
+    )
+    return (
+        paise(int(estimate.lo * estimate.n_rows)),
+        paise(int(estimate.hi * estimate.n_rows)),
+    )
+
+
+def _rule_counters(logs: Sequence[object], registry: RuleRegistry) -> list[RuleCounter]:
+    """Fired counts, sorted by how much work each refuser actually did."""
     tally: dict[str, int] = {}
     for row in logs:
         for rule_id in row.blocking_rule_ids:  # type: ignore[attr-defined]
             tally[rule_id] = tally.get(rule_id, 0) + 1
     return [
-        RuleCounter(rule_id=rule_id, fired=count, verdict=Verdict.BLOCK)
-        for rule_id, count in sorted(tally.items(), key=lambda kv: -kv[1])
+        RuleCounter(
+            rule_id=rule_id,
+            fired=count,
+            verdict=_refusal_verdict((rule_id,), registry),
+        )
+        for rule_id, count in sorted(tally.items(), key=lambda kv: (-kv[1], kv[0]))
     ]
 
 
@@ -297,11 +613,10 @@ def _pick_trace(result: HarnessResult, registry: RuleRegistry, at: datetime) -> 
         considered=considered,
         shadow_prices=dict(result.runs[Arm.ARC].shadow_prices),
         firings=[
-            RuleFiring(rule_id=rule_id, verdict=Verdict.BLOCK)
+            RuleFiring(rule_id=rule_id, verdict=_refusal_verdict((rule_id,), registry))
             for rule_id in chosen.blocking_rule_ids
-            if rule_id in registry
         ],
-        verdict=Verdict.BLOCK if chosen.veto_occurred else Verdict.ALLOW,
+        verdict=_refusal_verdict(tuple(chosen.blocking_rule_ids), registry),
         sampled_action=chosen.intended_key[1],
         sampled_propensity=float(chosen.pi_intended),
         realized_action=chosen.realized_key[1],

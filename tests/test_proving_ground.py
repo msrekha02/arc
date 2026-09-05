@@ -368,6 +368,127 @@ def test_vetoed_decisions_collapse_not_dropped() -> None:
     assert voice.resolved_to == DO_NOTHING
 
 
+def test_realized_propensity_is_the_summed_collapsed_mass() -> None:
+    """pi_realized is a SUM, never the one branch that happened to be sampled.
+
+    WHY THIS IS THE NUMBER THAT MATTERS. The DR estimate divides by
+    `pi_behaviour`, which reads `pi_realized`. If the realized propensity were
+    recorded as the refused branch's own probability, every importance ratio
+    on a vetoed row would divide by too small a number and the headline would
+    run high with no symptom at all - the arithmetic stays valid, the estimate
+    is simply wrong.
+
+    WHAT IT MUST EQUAL. `do_nothing` executes when it is drawn AND whenever
+    any other branch is refused onto it, so its execution probability is its
+    own allocator mass plus the mass of every branch that collapsed. It
+    therefore has to be STRICTLY greater than any single refused branch
+    whenever do_nothing carried allocator mass of its own.
+    """
+    refused_mass, sms_mass, own_mass = 0.5, 0.2, 0.3
+    pi_alloc: dict[DecisionKey, float] = {
+        (CLAIM_A, ActionType.VOICE_CALL): refused_mass,
+        (CLAIM_A, ActionType.SMS): sms_mass,
+        DO_NOTHING: own_mass,
+    }
+    composed = composed_propensity(
+        pi_alloc,
+        _RefusingGate({ActionType.VOICE_CALL}),
+        {CLAIM_A: _context(CLAIM_A)},
+        AT,
+    )
+    realized = composed.pi_exec[DO_NOTHING]
+
+    assert realized == pytest.approx(own_mass + refused_mass), (
+        f"do_nothing executes at {realized}, but it was drawn at {own_mass} and "
+        f"another {refused_mass} was refused onto it. The realized propensity is "
+        "the sum of every branch that lands here, not one of them"
+    )
+    assert realized > refused_mass, (
+        "do_nothing carried allocator mass of its own, so its realized propensity "
+        "must strictly exceed the refused branch's probability. Equality means the "
+        "collapsed mass was recorded in place of the sum"
+    )
+    assert composed.pi_exec[(CLAIM_A, ActionType.SMS)] == pytest.approx(sms_mass), (
+        "an unrefused branch was disturbed by another branch's collapse"
+    )
+
+    # TWO refusals onto the same target accumulate; they do not overwrite.
+    both = composed_propensity(
+        pi_alloc,
+        _RefusingGate({ActionType.VOICE_CALL, ActionType.SMS}),
+        {CLAIM_A: _context(CLAIM_A)},
+        AT,
+    )
+    assert both.pi_exec[DO_NOTHING] == pytest.approx(1.0), (
+        "every branch was refused, so do_nothing must carry all of the mass"
+    )
+    assert both.pi_exec[DO_NOTHING] > composed.pi_exec[DO_NOTHING], (
+        "refusing a second branch did not increase the collapsed mass"
+    )
+
+
+def test_the_logged_realized_propensity_is_the_composed_one(arc_logs) -> None:
+    """The same property on the real run, where the estimate reads it.
+
+    The log cannot show `pi_alloc`, so the check here is that the recorded
+    `pi_realized` is the composed execution probability of the action that
+    actually happened - the distribution that sums to one over what could have
+    executed - and never the refused branch's own number.
+    """
+    vetoed = [row for row in arc_logs if row.veto_occurred]
+    assert vetoed, "no refusals in this run; this gate would assert nothing"
+
+    for row in vetoed:
+        assert row.pi_realized == pytest.approx(row.pi_exec[row.realized_key]), (
+            f"pi_realized {row.pi_realized} is not the composed probability of "
+            f"{row.realized_key[1]}, which the DR estimate divides by"
+        )
+        assert row.intended_key not in row.pi_exec or row.pi_exec[row.intended_key] == 0.0, (
+            "a refused branch still carries execution probability; it did not happen"
+        )
+        assert sum(row.pi_exec.values()) == pytest.approx(1.0), (
+            "the execution distribution does not sum to one, so mass was lost or "
+            "invented in the collapse"
+        )
+        assert row.pi_behaviour == row.pi_realized > 0.0
+
+
+def test_a_refused_row_never_logs_the_same_two_propensities(arc_logs) -> None:
+    """pi_intended and pi_realized cannot coincide on a row that was refused.
+
+    WHY THEY MUST DIFFER. On a refused row the two numbers describe different
+    events: pi_intended is the allocator's own mass for the branch it sampled,
+    and pi_realized is the composed mass of the outcome that branch collapsed
+    ONTO, which by construction includes the collapsed mass plus whatever else
+    landed there. A refused branch contributes to the second and is absent from
+    it. Equality is therefore not a coincidence to tolerate; it means one field
+    was written with the other's value.
+
+    THE BUG THIS REPLACES. `pi_intended` read `pi_exec.get(intended,
+    pi_realized)`. Since `pi_exec` holds only what could EXECUTE, a refused
+    branch was never a key, the default fired on every vetoed row, and the
+    replay screen printed the same 0.771 for the action it sampled and the
+    action it took instead. The estimate was unaffected, because it divides by
+    `pi_behaviour` which reads `pi_realized`, but a silent default on a
+    propensity field is one rename away from reaching the arithmetic.
+    """
+    vetoed = [row for row in arc_logs if row.veto_occurred]
+    assert vetoed, "no refusals in this run; this gate would assert nothing"
+
+    for row in vetoed:
+        assert row.pi_intended != row.pi_realized, (
+            f"row logged pi_intended and pi_realized both at {row.pi_intended}. "
+            f"It sampled {row.intended_key[1]} and did {row.realized_key[1]}; those "
+            "are different events and cannot share a probability"
+        )
+        assert 0.0 < row.pi_intended <= 1.0, f"pi_intended {row.pi_intended} is not a probability"
+        # The refused branch is absent from the execution distribution, which
+        # is exactly why the old default fired.
+        assert row.intended_key not in row.pi_exec, (
+            "the refused branch is present in the execution distribution"
+        )
+
+
 def test_deferred_branches_collapse_like_blocked_ones() -> None:
     """DEFER is not a soft ALLOW. It did not happen this cycle."""
     pi_alloc: dict[DecisionKey, float] = {(CLAIM_A, ActionType.SMS): 0.7, DO_NOTHING: 0.3}

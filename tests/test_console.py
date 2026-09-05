@@ -370,6 +370,129 @@ def test_replay_trace_covers_every_question_a_reviewer_asks(data) -> None:
     )
 
 
+def test_a_refusing_verdict_always_names_who_refused(data, registry) -> None:
+    """A refusal that names nobody reads as a clean pass, which is worse than noise.
+
+    THE BUG THIS WAS WRITTEN AFTER. `RuleRegistry` has no `__contains__`, so
+    `rule_id in registry` fell back to iteration and compared a `str` against
+    `Rule` objects - False for every id, including real ones. The replay
+    screen filtered its firings through exactly that test, so every firing was
+    discarded, and the renderer's `else` branch then printed "Nothing
+    objected" underneath a verdict of block. Two lines later the same screen
+    said the Gate had refused the sampled action. Both sentences were
+    generated from one trace and they contradicted each other.
+
+    WHAT THIS ASSERTS. For every rule in the registry that refuses, a trace
+    carrying that refusal renders the rule id AND the force wording M3 allows
+    for it - which is basis and status together, through `force_label`, the
+    single function every renderer goes through. And no refusing verdict may
+    ever render the words that started this.
+    """
+    from datetime import UTC, datetime
+
+    from arc.console.replay import ConsideredAction, RuleFiring, Trace
+    from arc.core.money import Paise
+    from arc.core.types import ActionType, CauseLayer
+    from arc.gate.lattice import Verdict
+
+    refusing = [r for r in registry if r.on_violation is not Verdict.ALLOW]
+    assert refusing, "the registry refuses nothing; this gate has nothing to watch"
+
+    for rule in refusing:
+        trace = Trace(
+            claim_id="0" * 32,
+            subject_token="sub_test",
+            at=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+            amount_paise=Paise(120_000),
+            ltv_paise=Paise(900_000),
+            cause_label="insufficient_funds",
+            cause_layer=CauseLayer.CUSTOMER,
+            confidence=0.75,
+            answered_by="code_map",
+            cohort_power="sufficient",
+            confidence_capped=False,
+            considered=[
+                ConsideredAction(
+                    action=ActionType.SMS,
+                    uplift=0.05,
+                    adjusted_value=1_000.0,
+                    propensity=0.4,
+                )
+            ],
+            shadow_prices={"contact": 10.0, "rupee": 0.0},
+            firings=[RuleFiring(rule_id=rule.id, verdict=rule.on_violation)],
+            verdict=rule.on_violation,
+            sampled_action=ActionType.SMS,
+            sampled_propensity=0.4,
+            realized_action=ActionType.DO_NOTHING,
+            realized_propensity=0.6,
+            veto_occurred=True,
+            outcome="no response",
+            recovered_paise=Paise(0),
+            registry=registry,
+        )
+        view = narrate(trace)
+        for surface in (view.text(), view.render()):
+            assert rule.id in surface, (
+                f"{rule.id} refused this decision and the trace does not name it"
+            )
+            assert rule.force_label() in surface, (
+                f"{rule.id} is named without its force. Basis and status travel "
+                f"together through force_label so nothing overstates its legal "
+                f"weight, and a reader cannot tell law from our own policy without it"
+            )
+            assert "nothing objected" not in surface.lower(), (
+                f"the trace returned {rule.on_violation.value} and also claimed nothing objected"
+            )
+        assert_no_overstated_force(view.render(), registry)
+
+    # THE ORIGINAL SHAPE OF THE BUG: a refusing verdict whose firings were all
+    # discarded on the way in. The renderer used to take its else branch here
+    # and report that nothing objected, which is the one thing it must never
+    # say under a refusal.
+    stripped = replace(trace, firings=[], verdict=Verdict.BLOCK)
+    view = narrate(stripped)
+    for surface in (view.text(), view.render()):
+        assert "nothing objected" not in surface.lower(), (
+            "a block with no rule attached rendered as a clean pass; that is the "
+            "contradiction this gate exists to catch"
+        )
+
+
+def test_the_built_replay_screen_does_not_contradict_itself(data) -> None:
+    """The same check against the trace the console actually picks.
+
+    The parametrised gate above proves the renderer can name a refuser. This
+    one proves the screen a judge opens does, on real run data, where the
+    refusal happens to come from the allocator's admission step rather than
+    from a Gate rule - the case the original filter silently swallowed.
+    """
+    text = data.replay.text().lower()
+    rendered = data.replay.render().lower()
+
+    refused = data.replay.stages and any(
+        value.split(" - ")[0] not in ("allow", "")
+        for stage in data.replay.stages
+        if stage.label == "Gate verdict"
+        for key, value in stage.rows
+        if key == "verdict"
+    )
+    if not refused:
+        return
+
+    assert "nothing objected" not in text, "the trace refuses and says nothing objected"
+    assert "nothing objected" not in rendered, "the screen refuses and says nothing objected"
+
+    named = [
+        value
+        for stage in data.replay.stages
+        if stage.label == "Gate verdict"
+        for key, value in stage.rows
+        if key not in ("rules evaluated", "verdict")
+    ]
+    assert named, "the screen reports a refusal and names nobody who refused"
+
+
 def test_replay_states_rule_force_through_the_registry(data, registry) -> None:
     """Rules named in the trace carry M3's wording, and nothing overstates."""
     assert_no_overstated_force(data.replay.render(), registry)

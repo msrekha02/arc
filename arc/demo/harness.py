@@ -34,7 +34,22 @@ from dataclasses import dataclass, field
 from arc.conductor.breakers import BreakerId, Reading, evaluate_all
 from arc.console.build import DR_ERROR_JUDGED, ConsoleData, build
 from arc.console.replay import trace_lines
+
+# THE JUDGED DIGEST LIVES IN `arc.core.reproducibility`, not here. The console
+# needs it for the landing page and this module imports the console, so holding
+# it here would make that a cycle. Re-exported under its own name because this
+# is where a reader of the digest machinery looks for it, and the redundant
+# alias is what marks the re-export as deliberate rather than an unused import.
 from arc.core.money import Paise, format_inr
+from arc.core.reproducibility import (
+    JUDGED_DEMO_CYCLES as JUDGED_DEMO_CYCLES,
+)
+from arc.core.reproducibility import (
+    JUDGED_DEMO_SIZE as JUDGED_DEMO_SIZE,
+)
+from arc.core.reproducibility import (
+    JUDGED_DIGEST as JUDGED_DIGEST,
+)
 from arc.core.types import ActionType
 from arc.gate.registry import load_registry
 from arc.proving_ground.arms import Arm
